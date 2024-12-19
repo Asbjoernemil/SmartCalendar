@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, Alert } from 'react-native';
 import { TextInput, Button } from 'react-native-paper';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
@@ -14,26 +14,26 @@ export default function AddEventScreen({ navigation, route }) {
     const [description, setDescription] = useState('');
     const [date, setDate] = useState(initialDate);
 
-    const [hour, setHour] = useState(12);
-    const [minute, setMinute] = useState(0);
+    // Starttid
+    const [startHour, setStartHour] = useState(12);
+    const [startMinute, setStartMinute] = useState(0);
+    // Sluttid
+    const [endHour, setEndHour] = useState(13);
+    const [endMinute, setEndMinute] = useState(0);
 
     const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
     useEffect(() => {
         if (!groupId) {
-            // Udfør sideeffekten (alert og navigation) i useEffect
             Alert.alert(
                 "Ingen gruppe valgt",
                 "Der er ingen gruppe valgt. Vælg en gruppe først.",
-                [
-                    { text: "OK", onPress: () => navigation.goBack() }
-                ]
+                [{ text: "OK", onPress: () => navigation.goBack() }]
             );
         }
     }, [groupId]);
 
-    // Hvis groupId stadig ikke er defineret, returner en tom view eller en fallback.
     if (!groupId) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -44,20 +44,37 @@ export default function AddEventScreen({ navigation, route }) {
 
     const handleAddEvent = async () => {
         const dateString = date.toISOString().split('T')[0];
-        const selectedDateTime = new Date(dateString);
-        selectedDateTime.setHours(hour, minute, 0, 0);
-        const timeString = selectedDateTime.toISOString();
+
+        const startDateTime = new Date(dateString);
+        startDateTime.setHours(startHour, startMinute, 0, 0);
+        const startTimeString = startDateTime.toISOString();
+
+        const endDateTime = new Date(dateString);
+        endDateTime.setHours(endHour, endMinute, 0, 0);
+        const endTimeString = endDateTime.toISOString();
+
+        if (endDateTime <= startDateTime) {
+            Alert.alert('Ugyldig tid', 'Sluttiden skal være efter starttiden.');
+            return;
+        }
 
         const user = auth.currentUser;
-
         try {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userDocRef);
+            const userData = userSnap.data();
+            const userColor = userData && userData.color ? userData.color : '#000000';
+
+
             await addDoc(collection(db, 'events'), {
                 title,
                 description,
                 date: dateString,
-                time: timeString,
+                startTime: startTimeString,
+                endTime: endTimeString,
                 userId: user.uid,
-                groupId: groupId
+                groupId: groupId,
+                userColor: userColor
             });
             navigation.goBack();
         } catch (error) {
@@ -66,7 +83,8 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
-    const displayedTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
+    const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
+    const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
 
     return (
         <View style={styles.container}>
@@ -85,16 +103,16 @@ export default function AddEventScreen({ navigation, route }) {
                 multiline
             />
 
-            <Button onPress={() => { /* Date picker kan implementeres her */ }} style={styles.dateButton}>
+            <Button onPress={() => { }} style={styles.dateButton}>
                 Vælg dato: {formatDate(date.toISOString().split('T')[0])}
             </Button>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ marginRight: 10 }}>Vælg tid: {formatTime(displayedTime)}</Text>
+            <Text style={{ marginBottom: 5 }}>Starttid: {formatTime(displayedStartTime)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Picker
-                    selectedValue={hour}
+                    selectedValue={startHour}
                     style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setHour(itemValue)}
+                    onValueChange={(itemValue) => setStartHour(itemValue)}
                 >
                     {hours.map((h) => (
                         <Picker.Item key={h} label={h.toString()} value={h} />
@@ -104,9 +122,34 @@ export default function AddEventScreen({ navigation, route }) {
                 <Text style={{ marginHorizontal: 5 }}>:</Text>
 
                 <Picker
-                    selectedValue={minute}
+                    selectedValue={startMinute}
                     style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setMinute(itemValue)}
+                    onValueChange={(itemValue) => setStartMinute(itemValue)}
+                >
+                    {minutes.map((m) => (
+                        <Picker.Item key={m} label={m.toString()} value={m} />
+                    ))}
+                </Picker>
+            </View>
+
+            <Text style={{ marginBottom: 5 }}>Sluttid: {formatTime(displayedEndTime)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+                <Picker
+                    selectedValue={endHour}
+                    style={{ height: 50, width: 80 }}
+                    onValueChange={(itemValue) => setEndHour(itemValue)}
+                >
+                    {hours.map((h) => (
+                        <Picker.Item key={h} label={h.toString()} value={h} />
+                    ))}
+                </Picker>
+
+                <Text style={{ marginHorizontal: 5 }}>:</Text>
+
+                <Picker
+                    selectedValue={endMinute}
+                    style={{ height: 50, width: 80 }}
+                    onValueChange={(itemValue) => setEndMinute(itemValue)}
                 >
                     {minutes.map((m) => (
                         <Picker.Item key={m} label={m.toString()} value={m} />

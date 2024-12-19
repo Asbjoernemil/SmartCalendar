@@ -7,7 +7,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { useIsFocused } from '@react-navigation/native';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, Button } from 'react-native';
 
 export default function DayEventsScreen({ route, navigation }) {
     const { selectedDate, groupId } = route.params;
@@ -16,7 +16,6 @@ export default function DayEventsScreen({ route, navigation }) {
 
     useEffect(() => {
         const fetchEvents = async () => {
-            // Hvis vi ikke har groupId, kan vi ikke hente events
             if (!groupId) {
                 setEvents([]);
                 return;
@@ -31,28 +30,43 @@ export default function DayEventsScreen({ route, navigation }) {
             const querySnapshot = await getDocs(q);
             const eventsData = [];
             querySnapshot.forEach((doc) => {
-                eventsData.push({ id: doc.id, ...doc.data() });
+                const event = doc.data();
+                eventsData.push({
+                    id: doc.id,
+                    ...event,
+                    userColor: event.userColor || '#000'
+                });
             });
             setEvents(eventsData);
         };
 
-        // Hent events når skærmen får fokus og vi har en gyldig groupId
         if (isFocused && groupId) {
             fetchEvents();
         }
     }, [selectedDate, isFocused, groupId]);
 
     const renderItem = ({ item }) => {
-        const eventTime = item.time ? new Date(item.time) : null;
-        const timeString = eventTime ? formatTime(eventTime) : '';
+        const start = item.startTime ? new Date(item.startTime) : null;
+        const end = item.endTime ? new Date(item.endTime) : null;
+        const startString = start ? formatTime(start) : '';
+        const endString = end ? formatTime(end) : '';
 
         return (
             <TouchableOpacity
                 onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}
             >
-                <View style={{ padding: 10, backgroundColor: 'white', marginVertical: 5 }}>
+                <View style={{
+                    padding: 10,
+                    backgroundColor: 'white',
+                    marginVertical: 5,
+                    borderRadius: 5,
+                    borderLeftColor: item.userColor || '#000',
+                    borderLeftWidth: 5
+                }}>
                     <Text>{item.title || item.name}</Text>
-                    {timeString ? <Text>{timeString}</Text> : null}
+                    {startString && endString && (
+                        <Text>{startString} - {endString}</Text>
+                    )}
                 </View>
             </TouchableOpacity>
         );
@@ -74,6 +88,18 @@ export default function DayEventsScreen({ route, navigation }) {
                 icon="plus"
                 onPress={() => navigation.navigate('AddEvent', { selectedDate, groupId })}
             />
+            <TouchableOpacity
+                style={{
+                    backgroundColor: '#6200ee',
+                    padding: 10,
+                    borderRadius: 5,
+                    alignItems: 'center',
+                    marginTop: 10,
+                }}
+                onPress={() => navigation.navigate('DayView', { selectedDate, groupId })}
+            >
+                <Text style={{ color: 'white' }}>Vis Day View</Text>
+            </TouchableOpacity>
         </View>
     );
 }

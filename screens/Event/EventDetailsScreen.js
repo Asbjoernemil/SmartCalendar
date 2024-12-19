@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet, FlatList } from 'react-native';
 import { TextInput, Button } from 'react-native-paper';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { doc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../../services/firebase';
 import { formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
 
@@ -10,13 +10,20 @@ export default function EventDetailsScreen({ route, navigation }) {
     const { eventId } = route.params;
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [date, setDate] = useState(new Date()); // Hvis du også vil ændre datoen senere.
-    const [hour, setHour] = useState(12);
-    const [minute, setMinute] = useState(0);
-    const [isEditing, setIsEditing] = useState(false);
+    const [date, setDate] = useState(new Date());
+    const [startHour, setStartHour] = useState(12);
+    const [startMinute, setStartMinute] = useState(0);
+    const [endHour, setEndHour] = useState(13);
+    const [endMinute, setEndMinute] = useState(0);
 
-    // Timer og minutter ligesom i AddEventScreen
-    const hours = [...Array(24).keys()]; // 0-23
+    const [isEditing, setIsEditing] = useState(false);
+    const [canEdit, setCanEdit] = useState(false);
+
+    // Kommentar-relaterede states
+    const [comments, setComments] = useState([]);
+    const [commentText, setCommentText] = useState('');
+
+    const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
     useEffect(() => {
@@ -29,21 +36,34 @@ export default function EventDetailsScreen({ route, navigation }) {
                 setTitle(eventData.title || '');
                 setDescription(eventData.description || '');
 
-                if (eventData.time) {
-                    const eventTime = new Date(eventData.time);
-                    if (!isNaN(eventTime)) {
-                        setDate(eventTime);
-                        // Sæt hour og minute fra eventTime
-                        const h = eventTime.getHours();
-                        const m = eventTime.getMinutes();
+                if (eventData.userId === auth.currentUser.uid) {
+                    setCanEdit(true);
+                } else {
+                    setCanEdit(false);
+                }
 
-                        // Find nærmeste 5-minutters interval for at matche Pickerens logik
-                        const closestFive = minutes.reduce((prev, curr) =>
-                            Math.abs(curr - m) < Math.abs(prev - m) ? curr : prev
+                if (eventData.startTime && eventData.endTime) {
+                    const startTime = new Date(eventData.startTime);
+                    const endTime = new Date(eventData.endTime);
+                    if (!isNaN(startTime) && !isNaN(endTime)) {
+                        setDate(startTime);
+                        // Starttid
+                        const sh = startTime.getHours();
+                        const sm = startTime.getMinutes();
+                        const closestStartMin = minutes.reduce((prev, curr) =>
+                            Math.abs(curr - sm) < Math.abs(prev - sm) ? curr : prev
                         );
+                        setStartHour(sh);
+                        setStartMinute(closestStartMin);
 
-                        setHour(h);
-                        setMinute(closestFive);
+                        // Sluttid
+                        const eh = endTime.getHours();
+                        const em = endTime.getMinutes();
+                        const closestEndMin = minutes.reduce((prev, curr) =>
+                            Math.abs(curr - em) < Math.abs(prev - em) ? curr : prev
+                        );
+                        setEndHour(eh);
+                        setEndMinute(closestEndMin);
                     }
                 }
             } else {
@@ -55,18 +75,47 @@ export default function EventDetailsScreen({ route, navigation }) {
         fetchEvent();
     }, [eventId]);
 
-    const handleUpdateEvent = async () => {
-        try {
-            const dateString = date.toISOString().split('T')[0];
-            const updatedDateTime = new Date(dateString);
-            updatedDateTime.setHours(hour, minute, 0, 0);
-            const timeString = updatedDateTime.toISOString();
+    useEffect(() => {
+        // Lyt til kommentarer
+        const commentsRef = collection(db, 'events', eventId, 'comments');
+        const unsubscribe = onSnapshot(commentsRef, (snapshot) => {
+            const newComments = [];
+            snapshot.forEach((doc) => {
+                newComments.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            // Sortér evt. kommentarer efter timestamp
+            newComments.sort((a, b) => {
+                if (!a.timestamp || !b.timestamp) return 0;
+                return a.timestamp.toDate() - b.timestamp.toDate();
+            });
+            setComments(newComments);
+        });
 
+        return () => unsubscribe();
+    }, [eventId]);
+
+    const handleUpdateEvent = async () => {
+        const dateString = date.toISOString().split('T')[0];
+        const updatedStart = new Date(dateString);
+        updatedStart.setHours(startHour, startMinute, 0, 0);
+        const updatedEnd = new Date(dateString);
+        updatedEnd.setHours(endHour, endMinute, 0, 0);
+
+        if (updatedEnd <= updatedStart) {
+            Alert.alert('Ugyldig tid', 'Sluttiden skal være efter starttiden.');
+            return;
+        }
+
+        try {
             const docRef = doc(db, 'events', eventId);
             await updateDoc(docRef, {
                 title,
                 description,
-                time: timeString,
+                startTime: updatedStart.toISOString(),
+                endTime: updatedEnd.toISOString()
             });
             Alert.alert('Succes', 'Aftalen er opdateret.');
             setIsEditing(false);
@@ -101,12 +150,40 @@ export default function EventDetailsScreen({ route, navigation }) {
         );
     };
 
-    // Opret displayedTime baseret på current hour og minute
-    const displayedTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
+    const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
+    const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
+
+    const handleAddComment = async () => {
+        if (!commentText.trim()) return;
+
+        const commentsRef = collection(db, 'events', eventId, 'comments');
+        try {
+            await addDoc(commentsRef, {
+                text: commentText.trim(),
+                userId: auth.currentUser.uid,
+                timestamp: serverTimestamp()
+            });
+            setCommentText('');
+        } catch (error) {
+            console.log('Fejl ved tilføjelse af kommentar:', error);
+            Alert.alert('Fejl', 'Kunne ikke tilføje kommentar. Prøv igen.');
+        }
+    };
+
+    const renderComment = ({ item }) => {
+        const timeString = item.timestamp ? formatTime(item.timestamp.toDate()) : '';
+        return (
+            <View style={styles.commentContainer}>
+                <Text style={styles.commentUser}>{item.userId}</Text>
+                <Text style={styles.commentText}>{item.text}</Text>
+                <Text style={styles.commentTime}>{timeString}</Text>
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
-            {isEditing ? (
+            {isEditing && canEdit ? (
                 <>
                     <TextInput
                         label="Titel"
@@ -121,14 +198,12 @@ export default function EventDetailsScreen({ route, navigation }) {
                         style={styles.textInput}
                         multiline
                     />
-                    <Text style={{ marginRight: 10 }}>
-                        Vælg tidspunkt: {formatTime(displayedTime)}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ marginBottom: 5 }}>Starttid: {formatTime(displayedStartTime)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                         <Picker
-                            selectedValue={hour}
+                            selectedValue={startHour}
                             style={{ height: 50, width: 80 }}
-                            onValueChange={(itemValue) => setHour(itemValue)}
+                            onValueChange={(itemValue) => setStartHour(itemValue)}
                         >
                             {hours.map((h) => (
                                 <Picker.Item key={h} label={h.toString()} value={h} />
@@ -138,9 +213,34 @@ export default function EventDetailsScreen({ route, navigation }) {
                         <Text style={{ marginHorizontal: 5 }}>:</Text>
 
                         <Picker
-                            selectedValue={minute}
+                            selectedValue={startMinute}
                             style={{ height: 50, width: 80 }}
-                            onValueChange={(itemValue) => setMinute(itemValue)}
+                            onValueChange={(itemValue) => setStartMinute(itemValue)}
+                        >
+                            {minutes.map((m) => (
+                                <Picker.Item key={m} label={m.toString()} value={m} />
+                            ))}
+                        </Picker>
+                    </View>
+
+                    <Text style={{ marginBottom: 5 }}>Sluttid: {formatTime(displayedEndTime)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+                        <Picker
+                            selectedValue={endHour}
+                            style={{ height: 50, width: 80 }}
+                            onValueChange={(itemValue) => setEndHour(itemValue)}
+                        >
+                            {hours.map((h) => (
+                                <Picker.Item key={h} label={h.toString()} value={h} />
+                            ))}
+                        </Picker>
+
+                        <Text style={{ marginHorizontal: 5 }}>:</Text>
+
+                        <Picker
+                            selectedValue={endMinute}
+                            style={{ height: 50, width: 80 }}
+                            onValueChange={(itemValue) => setEndMinute(itemValue)}
                         >
                             {minutes.map((m) => (
                                 <Picker.Item key={m} label={m.toString()} value={m} />
@@ -153,27 +253,51 @@ export default function EventDetailsScreen({ route, navigation }) {
                     <Text style={styles.title}>{title}</Text>
                     <Text style={styles.description}>{description}</Text>
                     <Text style={styles.time}>
-                        Tid: {formatTime(displayedTime)}
+                        Start: {formatTime(displayedStartTime)}
+                    </Text>
+                    <Text style={styles.time}>
+                        Slut: {formatTime(displayedEndTime)}
                     </Text>
                 </>
             )}
 
             <View style={styles.buttonContainer}>
-                {isEditing ? (
-                    <Button mode="contained" onPress={handleUpdateEvent} style={styles.button}>
-                        Gem
-                    </Button>
-                ) : (
-                    <Button
-                        mode="contained"
-                        onPress={() => setIsEditing(true)}
-                        style={styles.button}
-                    >
-                        Rediger
+                {canEdit && (
+                    isEditing ? (
+                        <Button mode="contained" onPress={handleUpdateEvent} style={styles.button}>
+                            Gem
+                        </Button>
+                    ) : (
+                        <Button mode="contained" onPress={() => setIsEditing(true)} style={styles.button}>
+                            Rediger
+                        </Button>
+                    )
+                )}
+                {canEdit && (
+                    <Button mode="contained" onPress={handleDeleteEvent} style={styles.button}>
+                        Slet
                     </Button>
                 )}
-                <Button mode="contained" onPress={handleDeleteEvent} style={styles.button}>
-                    Slet
+            </View>
+
+            {/* Kommentar-sektion */}
+            <Text style={{ fontSize: 18, marginVertical: 10 }}>Kommentarer</Text>
+            <FlatList
+                data={comments}
+                renderItem={renderComment}
+                keyExtractor={(item) => item.id}
+                ListEmptyComponent={<Text>Ingen kommentarer endnu.</Text>}
+            />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                <TextInput
+                    label="Ny kommentar"
+                    value={commentText}
+                    onChangeText={setCommentText}
+                    style={{ flex: 1, marginRight: 10 }}
+                />
+                <Button mode="contained" onPress={handleAddComment}>
+                    Tilføj
                 </Button>
             </View>
         </View>
@@ -198,7 +322,7 @@ const styles = StyleSheet.create({
     },
     time: {
         fontSize: 16,
-        marginBottom: 20,
+        marginBottom: 5,
     },
     buttonContainer: {
         flexDirection: 'row',
@@ -206,5 +330,21 @@ const styles = StyleSheet.create({
     },
     button: {
         marginRight: 10,
+    },
+    commentContainer: {
+        backgroundColor: '#f0f0f0',
+        padding: 10,
+        borderRadius: 5,
+        marginVertical: 5,
+    },
+    commentUser: {
+        fontWeight: 'bold',
+    },
+    commentText: {
+        marginVertical: 5,
+    },
+    commentTime: {
+        fontSize: 12,
+        color: '#555',
     },
 });

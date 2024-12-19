@@ -59,8 +59,10 @@ export default function HomeScreen({ navigation, route }) {
                     name: event.title,
                     height: 50,
                     date: event.date,
-                    time: event.time,
                     userId: event.userId,
+                    userColor: event.userColor || '#000',
+                    startTime: event.startTime,   // tilføj startTime
+                    endTime: event.endTime       // tilføj endTime
                 });
             });
             console.log('newItems:', newItems);
@@ -107,13 +109,13 @@ export default function HomeScreen({ navigation, route }) {
                     navigation.navigate('DayEvents', { selectedDate: day.dateString, groupId });
                 }}
                 renderItem={(item, firstItemInDay) => {
-                    const eventTime = item.time ? new Date(item.time) : null;
-                    const timeString = eventTime ? formatTime(eventTime) : '';
+                    const startTime = item.startTime ? new Date(item.startTime) : null;
+                    const endTime = item.endTime ? new Date(item.endTime) : null;
+                    const startString = startTime ? formatTime(startTime) : '';
+                    const endString = endTime ? formatTime(endTime) : '';
 
                     return (
-                        <TouchableOpacity
-                            onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}
-                        >
+                        <TouchableOpacity onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}>
                             <View
                                 style={{
                                     backgroundColor: 'white',
@@ -121,11 +123,14 @@ export default function HomeScreen({ navigation, route }) {
                                     marginRight: 10,
                                     marginTop: 17,
                                     borderRadius: 5,
+                                    borderLeftColor: item.userColor || '#000',
+                                    borderLeftWidth: 5,
                                 }}
                             >
                                 <Text>{item.name}</Text>
                                 <Text>{formatDate(item.date)}</Text>
-                                {timeString ? <Text>{timeString}</Text> : null}
+                                {/* Nu vises både start og slut hvis de findes */}
+                                {startString && endString ? <Text>{startString} - {endString}</Text> : null}
                             </View>
                         </TouchableOpacity>
                     );

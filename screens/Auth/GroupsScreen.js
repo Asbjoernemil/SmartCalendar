@@ -127,9 +127,12 @@ export default function GroupsScreen({ navigation }) {
             </Button>
 
             <Button
-                title="Skift gruppe"
+                mode="contained"
                 onPress={() => navigation.navigate('GroupList')}
-            />
+                style={{ marginTop: 20 }}
+            >
+                Tilbage til gruppeliste
+            </Button>
         </View>
     );
 }

@@ -8,6 +8,7 @@ import { auth, db } from '../../services/firebase';
 export default function SignupScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const colors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFA500', '#008080'];
 
     const handleSignup = async () => {
         try {
@@ -16,7 +17,7 @@ export default function SignupScreen({ navigation }) {
             // Hardcode et groupId for nu, f.eks. "group123"
             await setDoc(doc(db, 'users', user.uid), {
                 email: user.email,
-                color: '#FF0000', // midlertidig farve, kan senere gøres bruger-vælgbart
+                color: colors[Math.floor(Math.random() * colors.length)],
                 groups: [] // tom array ved oprettelse
             });
             navigation.replace('GroupList');

@@ -13,6 +13,7 @@ import DayEventsScreen from './screens/Event/DayEventsScreen'; // Importer den n
 import EventDetailsScreen from './screens/Event/EventDetailsScreen';
 import GroupsScreen from './screens/Auth/GroupsScreen';
 import GroupListScreen from './screens/Auth/GroupListScreen';
+import DayViewScreen from './screens/Event/DayViewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +34,8 @@ export default function App() {
         <Stack.Screen name="AddEvent" component={AddEventScreen} options={{ title: 'Ny Aftale' }} />
         <Stack.Screen name="DayEvents" component={DayEventsScreen} options={{ title: 'Dagens Aftaler' }} />
         <Stack.Screen name="EventDetails" component={EventDetailsScreen} options={{ title: 'Aftale Detaljer' }} />
+        <Stack.Screen name="DayView" component={DayViewScreen} options={{ title: 'Dagsvisning' }} />
+
       </Stack.Navigator>
     </NavigationContainer>
   );
