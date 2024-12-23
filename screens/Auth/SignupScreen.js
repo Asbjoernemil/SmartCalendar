@@ -8,17 +8,19 @@ import { auth, db } from '../../services/firebase';
 export default function SignupScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [displayName, setDisplayName] = useState('');
+
     const colors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFA500', '#008080'];
 
     const handleSignup = async () => {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-            // Hardcode et groupId for nu, f.eks. "group123"
             await setDoc(doc(db, 'users', user.uid), {
                 email: user.email,
+                displayName: displayName || user.email, // Hvis intet displayName angives, brug email
                 color: colors[Math.floor(Math.random() * colors.length)],
-                groups: [] // tom array ved oprettelse
+                groups: []
             });
             navigation.replace('GroupList');
         } catch (error) {
@@ -30,6 +32,12 @@ export default function SignupScreen({ navigation }) {
     return (
         <View style={styles.container}>
             <Text variant="headlineLarge">Opret konto</Text>
+            <TextInput
+                label="Brugernavn"
+                value={displayName}
+                onChangeText={setDisplayName}
+                style={styles.input}
+            />
             <TextInput
                 label="Email"
                 value={email}

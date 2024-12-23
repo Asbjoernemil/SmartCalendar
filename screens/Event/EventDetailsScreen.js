@@ -19,6 +19,8 @@ export default function EventDetailsScreen({ route, navigation }) {
     const [isEditing, setIsEditing] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
 
+    const [ownerDisplayName, setOwnerDisplayName] = useState(''); // Tilføj denne
+
     // Kommentar-relaterede states
     const [comments, setComments] = useState([]);
     const [commentText, setCommentText] = useState('');
@@ -36,10 +38,22 @@ export default function EventDetailsScreen({ route, navigation }) {
                 setTitle(eventData.title || '');
                 setDescription(eventData.description || '');
 
-                if (eventData.userId === auth.currentUser.uid) {
+                // Hent ejeren
+                const eventOwnerId = eventData.userId;
+                if (eventOwnerId === auth.currentUser.uid) {
                     setCanEdit(true);
                 } else {
                     setCanEdit(false);
+                }
+
+                // Hent ejerens displayName
+                const userDocRef = doc(db, 'users', eventOwnerId);
+                const userSnap = await getDoc(userDocRef);
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    setOwnerDisplayName(userData.displayName || eventOwnerId);
+                } else {
+                    setOwnerDisplayName(eventOwnerId);
                 }
 
                 if (eventData.startTime && eventData.endTime) {
@@ -258,6 +272,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                     <Text style={styles.time}>
                         Slut: {formatTime(displayedEndTime)}
                     </Text>
+                    <Text style={styles.time}>Oprettet af: {ownerDisplayName}</Text>
                 </>
             )}
 

@@ -8,7 +8,8 @@ import { useIsFocused } from '@react-navigation/native';
 export default function GroupListScreen({ navigation }) {
     const [userData, setUserData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const isFocused = useIsFocused(); // Henter info om skærmen er i fokus
+    const [groupsData, setGroupsData] = useState([]);
+    const isFocused = useIsFocused();
 
     const fetchUserData = async () => {
         const user = auth.currentUser;
@@ -21,8 +22,29 @@ export default function GroupListScreen({ navigation }) {
         if (userSnap.exists()) {
             const data = userSnap.data();
             setUserData(data);
+            if (data.groups && data.groups.length > 0) {
+                const newGroupsData = [];
+                for (const gId of data.groups) {
+                    const gRef = doc(db, 'groups', gId);
+                    const gSnap = await getDoc(gRef);
+                    if (gSnap.exists()) {
+                        const gData = gSnap.data();
+                        // Brug gruppens navn, hvis den findes, ellers brug ID
+                        newGroupsData.push({
+                            id: gId,
+                            name: gData.name || gId
+                        });
+                    } else {
+                        newGroupsData.push({ id: gId, name: gId });
+                    }
+                }
+                setGroupsData(newGroupsData);
+            } else {
+                setGroupsData([]);
+            }
         } else {
             setUserData({ groups: [] });
+            setGroupsData([]);
         }
         setLoading(false);
     };
@@ -32,7 +54,7 @@ export default function GroupListScreen({ navigation }) {
             setLoading(true);
             fetchUserData();
         }
-    }, [isFocused]); // Hver gang skærmen kommer i fokus, hent brugerdata igen
+    }, [isFocused]);
 
     if (loading) {
         return (
@@ -42,7 +64,7 @@ export default function GroupListScreen({ navigation }) {
         );
     }
 
-    const groups = userData.groups || [];
+    const groups = groupsData;
 
     if (groups.length === 0) {
         return (
@@ -57,7 +79,6 @@ export default function GroupListScreen({ navigation }) {
     }
 
     const handleSelectGroup = (groupId) => {
-        // Naviger til Home med valgt groupId som parameter
         navigation.navigate('Home', { groupId });
     };
 
@@ -66,12 +87,13 @@ export default function GroupListScreen({ navigation }) {
             <Text variant="headlineSmall">Vælg en gruppe</Text>
             <FlatList
                 data={groups}
-                keyExtractor={(item) => item}
+                keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                     <List.Item
-                        title={`Gruppe: ${item}`}
-                        description="Tryk for at se kalender"
-                        onPress={() => handleSelectGroup(item)}
+                        title={`Gruppe: ${item.name}`}
+                        // Her viser vi ID'et nedenunder navnet
+                        description={`Gruppe-ID: ${item.id}`}
+                        onPress={() => handleSelectGroup(item.id)}
                     />
                 )}
             />
