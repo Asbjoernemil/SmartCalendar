@@ -4,7 +4,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { Agenda } from 'react-native-calendars';
-import { FAB, IconButton } from 'react-native-paper'; // Importer IconButton
+import { FAB, IconButton } from 'react-native-paper';
 import { formatDate, formatTime } from '../utils/dateUtils';
 
 export default function HomeScreen({ navigation, route }) {
@@ -32,37 +32,40 @@ export default function HomeScreen({ navigation, route }) {
         const start = new Date(day.timestamp - 15 * 24 * 60 * 60 * 1000);
         const end = new Date(day.timestamp + 85 * 24 * 60 * 60 * 1000);
 
+        // For at initiere Agendaens dage
         for (let i = -15; i < 85; i++) {
             const time = day.timestamp + i * 24 * 60 * 60 * 1000;
             const strTime = new Date(time).toISOString().split('T')[0];
             newItems[strTime] = [];
         }
 
+        // VIGTIGT: Ændr her
         const q = query(
             collection(db, 'events'),
             where('date', '>=', start.toISOString().split('T')[0]),
             where('date', '<=', end.toISOString().split('T')[0]),
-            where('groupId', '==', groupId)
+            // I stedet for where('groupId', '==', groupId)
+            where('groupIds', 'array-contains', groupId)
         );
 
         try {
             const querySnapshot = await getDocs(q);
-            console.log("Got querySnapshot with", querySnapshot.size, "events");
-            querySnapshot.forEach((doc) => {
-                const event = doc.data();
+            console.log('Got querySnapshot with', querySnapshot.size, 'events');
+            querySnapshot.forEach((docSnap) => {
+                const event = docSnap.data();
                 const strTime = event.date;
                 if (!newItems[strTime]) {
                     newItems[strTime] = [];
                 }
                 newItems[strTime].push({
-                    id: doc.id,
+                    id: docSnap.id,
                     name: event.title,
                     height: 50,
                     date: event.date,
                     userId: event.userId,
                     userColor: event.userColor || '#000',
-                    startTime: event.startTime,   // tilføj startTime
-                    endTime: event.endTime       // tilføj endTime
+                    startTime: event.startTime,
+                    endTime: event.endTime,
                 });
             });
             console.log('newItems:', newItems);
@@ -129,7 +132,6 @@ export default function HomeScreen({ navigation, route }) {
                             >
                                 <Text>{item.name}</Text>
                                 <Text>{formatDate(item.date)}</Text>
-                                {/* Nu vises både start og slut hvis de findes */}
                                 {startString && endString ? <Text>{startString} - {endString}</Text> : null}
                             </View>
                         </TouchableOpacity>

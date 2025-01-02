@@ -27,9 +27,9 @@ export default function AddEventScreen({ navigation, route }) {
     useEffect(() => {
         if (!groupId) {
             Alert.alert(
-                "Ingen gruppe valgt",
-                "Der er ingen gruppe valgt. Vælg en gruppe først.",
-                [{ text: "OK", onPress: () => navigation.goBack() }]
+                'Ingen gruppe valgt',
+                'Der er ingen gruppe valgt. Vælg en gruppe først.',
+                [{ text: 'OK', onPress: () => navigation.goBack() }]
             );
         }
     }, [groupId]);
@@ -65,7 +65,6 @@ export default function AddEventScreen({ navigation, route }) {
             const userData = userSnap.data();
             const userColor = userData && userData.color ? userData.color : '#000000';
 
-
             await addDoc(collection(db, 'events'), {
                 title,
                 description,
@@ -73,8 +72,9 @@ export default function AddEventScreen({ navigation, route }) {
                 startTime: startTimeString,
                 endTime: endTimeString,
                 userId: user.uid,
-                groupId: groupId,
-                userColor: userColor
+                userColor: userColor,
+                // VIGTIGT: Vi gemmer et array af gruppe-IDs, også selvom det pt. kun er én gruppe
+                groupIds: [groupId],
             });
             navigation.goBack();
         } catch (error) {

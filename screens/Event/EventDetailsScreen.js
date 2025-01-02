@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Alert, StyleSheet, FlatList } from 'react-native';
 import { TextInput, Button } from 'react-native-paper';
-import { doc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+    doc,
+    getDoc,
+    updateDoc,
+    deleteDoc,
+    collection,
+    onSnapshot,
+    addDoc,
+    serverTimestamp,
+} from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
@@ -19,7 +28,7 @@ export default function EventDetailsScreen({ route, navigation }) {
     const [isEditing, setIsEditing] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
 
-    const [ownerDisplayName, setOwnerDisplayName] = useState(''); // Tilføj denne
+    const [ownerDisplayName, setOwnerDisplayName] = useState('');
 
     // Kommentar-relaterede states
     const [comments, setComments] = useState([]);
@@ -40,11 +49,7 @@ export default function EventDetailsScreen({ route, navigation }) {
 
                 // Hent ejeren
                 const eventOwnerId = eventData.userId;
-                if (eventOwnerId === auth.currentUser.uid) {
-                    setCanEdit(true);
-                } else {
-                    setCanEdit(false);
-                }
+                setCanEdit(eventOwnerId === auth.currentUser?.uid);
 
                 // Hent ejerens displayName
                 const userDocRef = doc(db, 'users', eventOwnerId);
@@ -56,26 +61,27 @@ export default function EventDetailsScreen({ route, navigation }) {
                     setOwnerDisplayName(eventOwnerId);
                 }
 
+                // Tider
                 if (eventData.startTime && eventData.endTime) {
                     const startTime = new Date(eventData.startTime);
                     const endTime = new Date(eventData.endTime);
                     if (!isNaN(startTime) && !isNaN(endTime)) {
                         setDate(startTime);
-                        // Starttid
                         const sh = startTime.getHours();
                         const sm = startTime.getMinutes();
+                        const eh = endTime.getHours();
+                        const em = endTime.getMinutes();
+
+                        // Justér til nærmeste 5-min interval?
                         const closestStartMin = minutes.reduce((prev, curr) =>
                             Math.abs(curr - sm) < Math.abs(prev - sm) ? curr : prev
                         );
-                        setStartHour(sh);
-                        setStartMinute(closestStartMin);
-
-                        // Sluttid
-                        const eh = endTime.getHours();
-                        const em = endTime.getMinutes();
                         const closestEndMin = minutes.reduce((prev, curr) =>
                             Math.abs(curr - em) < Math.abs(prev - em) ? curr : prev
                         );
+
+                        setStartHour(sh);
+                        setStartMinute(closestStartMin);
                         setEndHour(eh);
                         setEndMinute(closestEndMin);
                     }
@@ -90,14 +96,14 @@ export default function EventDetailsScreen({ route, navigation }) {
     }, [eventId]);
 
     useEffect(() => {
-        // Lyt til kommentarer
+        // Lyt til kommentarer i en subcollection
         const commentsRef = collection(db, 'events', eventId, 'comments');
         const unsubscribe = onSnapshot(commentsRef, (snapshot) => {
             const newComments = [];
-            snapshot.forEach((doc) => {
+            snapshot.forEach((docSnap) => {
                 newComments.push({
-                    id: doc.id,
-                    ...doc.data()
+                    id: docSnap.id,
+                    ...docSnap.data(),
                 });
             });
             // Sortér evt. kommentarer efter timestamp
@@ -129,7 +135,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                 title,
                 description,
                 startTime: updatedStart.toISOString(),
-                endTime: updatedEnd.toISOString()
+                endTime: updatedEnd.toISOString(),
             });
             Alert.alert('Succes', 'Aftalen er opdateret.');
             setIsEditing(false);
@@ -164,8 +170,20 @@ export default function EventDetailsScreen({ route, navigation }) {
         );
     };
 
-    const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
-    const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
+    const displayedStartTime = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        startHour,
+        startMinute
+    );
+    const displayedEndTime = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        endHour,
+        endMinute
+    );
 
     const handleAddComment = async () => {
         if (!commentText.trim()) return;
@@ -175,7 +193,7 @@ export default function EventDetailsScreen({ route, navigation }) {
             await addDoc(commentsRef, {
                 text: commentText.trim(),
                 userId: auth.currentUser.uid,
-                timestamp: serverTimestamp()
+                timestamp: serverTimestamp(),
             });
             setCommentText('');
         } catch (error) {
@@ -223,9 +241,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                                 <Picker.Item key={h} label={h.toString()} value={h} />
                             ))}
                         </Picker>
-
                         <Text style={{ marginHorizontal: 5 }}>:</Text>
-
                         <Picker
                             selectedValue={startMinute}
                             style={{ height: 50, width: 80 }}
@@ -266,12 +282,8 @@ export default function EventDetailsScreen({ route, navigation }) {
                 <>
                     <Text style={styles.title}>{title}</Text>
                     <Text style={styles.description}>{description}</Text>
-                    <Text style={styles.time}>
-                        Start: {formatTime(displayedStartTime)}
-                    </Text>
-                    <Text style={styles.time}>
-                        Slut: {formatTime(displayedEndTime)}
-                    </Text>
+                    <Text style={styles.time}>Start: {formatTime(displayedStartTime)}</Text>
+                    <Text style={styles.time}>Slut: {formatTime(displayedEndTime)}</Text>
                     <Text style={styles.time}>Oprettet af: {ownerDisplayName}</Text>
                 </>
             )}

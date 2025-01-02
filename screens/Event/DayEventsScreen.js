@@ -1,5 +1,3 @@
-// screens/Event/DayEventsScreen.js
-
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList } from 'react-native';
 import { FAB } from 'react-native-paper';
@@ -7,7 +5,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { useIsFocused } from '@react-navigation/native';
-import { TouchableOpacity, Button } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 
 export default function DayEventsScreen({ route, navigation }) {
     const { selectedDate, groupId } = route.params;
@@ -21,20 +19,21 @@ export default function DayEventsScreen({ route, navigation }) {
                 return;
             }
 
+            // Her bruger vi 'groupIds' (array) og 'array-contains'
             const q = query(
                 collection(db, 'events'),
                 where('date', '==', selectedDate),
-                where('groupId', '==', groupId)
+                where('groupIds', 'array-contains', groupId)
             );
 
             const querySnapshot = await getDocs(q);
             const eventsData = [];
-            querySnapshot.forEach((doc) => {
-                const event = doc.data();
+            querySnapshot.forEach((docSnap) => {
+                const event = docSnap.data();
                 eventsData.push({
-                    id: doc.id,
+                    id: docSnap.id,
                     ...event,
-                    userColor: event.userColor || '#000'
+                    userColor: event.userColor || '#000',
                 });
             });
             setEvents(eventsData);

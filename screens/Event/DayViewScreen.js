@@ -67,6 +67,7 @@ export default function DayViewScreen({ route }) {
                 events={events}
                 height={600}
                 mode="day"
+                date={new Date(selectedDate)}
                 eventCellStyle={eventCellStyle}
                 overlapOffset={100}
             />
