@@ -185,14 +185,28 @@ export default function EventDetailsScreen({ route, navigation }) {
         endMinute
     );
 
+    // 1) Her henter du displayName, når du tilføjer en kommentar
     const handleAddComment = async () => {
         if (!commentText.trim()) return;
+
+        const user = auth.currentUser;
+        if (!user) return;
+
+        // Hent brugerens displayName
+        const userDocRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userDocRef);
+        let userName = user.uid;
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+            userName = userData.displayName || user.email || user.uid;
+        }
 
         const commentsRef = collection(db, 'events', eventId, 'comments');
         try {
             await addDoc(commentsRef, {
                 text: commentText.trim(),
-                userId: auth.currentUser.uid,
+                userId: user.uid,
+                userName: userName,            // <--- gemmer brugerens navn
                 timestamp: serverTimestamp(),
             });
             setCommentText('');
@@ -202,11 +216,14 @@ export default function EventDetailsScreen({ route, navigation }) {
         }
     };
 
+    // 2) Her viser du userName i stedet for userId
     const renderComment = ({ item }) => {
         const timeString = item.timestamp ? formatTime(item.timestamp.toDate()) : '';
         return (
             <View style={styles.commentContainer}>
-                <Text style={styles.commentUser}>{item.userId}</Text>
+                <Text style={styles.commentUser}>
+                    {item.userName || item.userId}
+                </Text>
                 <Text style={styles.commentText}>{item.text}</Text>
                 <Text style={styles.commentTime}>{timeString}</Text>
             </View>

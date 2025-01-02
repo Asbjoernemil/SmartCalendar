@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
-import { Calendar } from 'react-native-big-calendar'; // Importer Calendar korrekt
+import { Calendar } from 'react-native-big-calendar';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useIsFocused } from '@react-navigation/native';
@@ -20,15 +20,16 @@ export default function DayViewScreen({ route }) {
                 return;
             }
 
+            // Bemærk: "groupIds" i stedet for "groupId"
             const q = query(
                 collection(db, 'events'),
                 where('date', '==', selectedDate),
-                where('groupId', '==', groupId)
+                where('groupIds', 'array-contains', groupId)
             );
 
             const querySnapshot = await getDocs(q);
             const eventsData = [];
-            querySnapshot.forEach(docSnap => {
+            querySnapshot.forEach((docSnap) => {
                 const eventData = docSnap.data();
                 if (eventData.startTime && eventData.endTime) {
                     eventsData.push({
@@ -53,13 +54,11 @@ export default function DayViewScreen({ route }) {
         return <ActivityIndicator style={{ flex: 1 }} />;
     }
 
-    const eventCellStyle = (event) => {
-        return {
-            backgroundColor: event.color || '#000',
-            borderRadius: 5,
-            padding: 5,
-        };
-    };
+    const eventCellStyle = (event) => ({
+        backgroundColor: event.color || '#000',
+        borderRadius: 5,
+        padding: 5,
+    });
 
     return (
         <View style={{ flex: 1 }}>
@@ -67,7 +66,7 @@ export default function DayViewScreen({ route }) {
                 events={events}
                 height={600}
                 mode="day"
-                date={new Date(selectedDate)}
+                date={new Date(selectedDate)} // viser den valgte dag
                 eventCellStyle={eventCellStyle}
                 overlapOffset={100}
             />
