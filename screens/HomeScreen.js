@@ -1,18 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { Agenda } from 'react-native-calendars';
-import { FAB, IconButton } from 'react-native-paper';
+// 1) Importer Calendar fra big-calendar
+import { Calendar } from 'react-native-big-calendar';
+import { FAB, IconButton, Button } from 'react-native-paper';
 import { formatDate, formatTime } from '../utils/dateUtils';
+import { useIsFocused } from '@react-navigation/native';
 
 export default function HomeScreen({ navigation, route }) {
-    const [items, setItems] = useState({});
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const { groupId } = route.params || {};
+    const isFocused = useIsFocused();
+
+    // Her holder vi dine events i array-form: 
+    //   [ {title, start, end, color}, ... ]
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Hvilken “view mode” (dag/uge/måned) vil vi se?
+    const [mode, setMode] = useState('week');
+    // Mulige værdier: 'day' | 'week' | 'month'
 
     useEffect(() => {
+        // Tjek om brugeren er logget ind
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (!user) {
                 navigation.replace('Login');
@@ -21,59 +32,47 @@ export default function HomeScreen({ navigation, route }) {
         return unsubscribe;
     }, []);
 
-    const loadItems = async (day) => {
+    // 2) Hent events, når skærmen fokuseres eller groupId ændres
+    useEffect(() => {
+        if (!isFocused) return;
         if (!groupId) {
-            setItems({});
+            setEvents([]);
+            setLoading(false);
             return;
         }
+        fetchEvents();
+    }, [isFocused, groupId]);
 
-        const newItems = {};
-
-        const start = new Date(day.timestamp - 15 * 24 * 60 * 60 * 1000);
-        const end = new Date(day.timestamp + 85 * 24 * 60 * 60 * 1000);
-
-        // For at initiere Agendaens dage
-        for (let i = -15; i < 85; i++) {
-            const time = day.timestamp + i * 24 * 60 * 60 * 1000;
-            const strTime = new Date(time).toISOString().split('T')[0];
-            newItems[strTime] = [];
-        }
-
-        // VIGTIGT: Ændr her
-        const q = query(
-            collection(db, 'events'),
-            where('date', '>=', start.toISOString().split('T')[0]),
-            where('date', '<=', end.toISOString().split('T')[0]),
-            // I stedet for where('groupId', '==', groupId)
-            where('groupIds', 'array-contains', groupId)
-        );
-
+    const fetchEvents = async () => {
+        setLoading(true);
         try {
+            // For nu, henter vi “alle events” i den valgte gruppe, ingen “dato range”
+            // Du kan også lave “date range” queries, hvis du vil begrænse data.
+            const q = query(
+                collection(db, 'events'),
+                where('groupIds', 'array-contains', groupId)
+            );
             const querySnapshot = await getDocs(q);
-            console.log('Got querySnapshot with', querySnapshot.size, 'events');
+            const fetchedEvents = [];
             querySnapshot.forEach((docSnap) => {
-                const event = docSnap.data();
-                const strTime = event.date;
-                if (!newItems[strTime]) {
-                    newItems[strTime] = [];
+                const data = docSnap.data();
+                // Tjek for startTime/endTime
+                if (data.startTime && data.endTime) {
+                    fetchedEvents.push({
+                        id: docSnap.id,
+                        title: data.title || 'Uden titel',
+                        start: new Date(data.startTime),
+                        end: new Date(data.endTime),
+                        color: data.userColor || '#000',
+                        // Gem evt. mere her, fx userId: data.userId
+                    });
                 }
-                newItems[strTime].push({
-                    id: docSnap.id,
-                    name: event.title,
-                    height: 50,
-                    date: event.date,
-                    userId: event.userId,
-                    userColor: event.userColor || '#000',
-                    startTime: event.startTime,
-                    endTime: event.endTime,
-                });
             });
-            console.log('newItems:', newItems);
-            setItems(newItems);
-        } catch (e) {
-            console.log('Error fetching events:', e);
-            setItems({});
+            setEvents(fetchedEvents);
+        } catch (error) {
+            console.log('Error fetching events:', error);
         }
+        setLoading(false);
     };
 
     const handleLogout = () => {
@@ -88,8 +87,9 @@ export default function HomeScreen({ navigation, route }) {
     };
 
     if (!groupId) {
+        // Ingen gruppe valgt
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={styles.center}>
                 <Text>Vælg venligst en gruppe i GroupList først.</Text>
                 <TouchableOpacity onPress={() => navigation.navigate('GroupList')}>
                     <Text style={{ color: 'blue', marginTop: 10 }}>Tilbage til Gruppeliste</Text>
@@ -98,54 +98,51 @@ export default function HomeScreen({ navigation, route }) {
         );
     }
 
+    if (loading) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" />
+            </View>
+        );
+    }
+
+    // 3) onPressEvent -> Gå til EventDetails
+    const onPressEvent = (event) => {
+        // event kan have en .id, hvis du vil navigere
+        // Men vi gemte docSnap.id i feltet 'id' ovenfor
+        if (event.id) {
+            navigation.navigate('EventDetails', { eventId: event.id });
+        }
+    };
+
     return (
         <View style={{ flex: 1 }}>
-            <Agenda
-                items={items}
-                loadItemsForMonth={loadItems}
-                selected={selectedDate}
-                pastScrollRange={12}
-                futureScrollRange={12}
-                style={{ paddingBottom: 80 }}
-                onDayPress={(day) => {
-                    setSelectedDate(day.dateString);
-                    navigation.navigate('DayEvents', { selectedDate: day.dateString, groupId });
-                }}
-                renderItem={(item, firstItemInDay) => {
-                    const startTime = item.startTime ? new Date(item.startTime) : null;
-                    const endTime = item.endTime ? new Date(item.endTime) : null;
-                    const startString = startTime ? formatTime(startTime) : '';
-                    const endString = endTime ? formatTime(endTime) : '';
+            {/* LILLE VÆRKTØJSLINJE TIL AT SKIFTE MELLEM DAG/UGE/MÅNED */}
+            <View style={styles.toolbar}>
+                <Button mode={mode === 'day' ? 'contained' : 'outlined'} onPress={() => setMode('day')}>
+                    Dag
+                </Button>
+                <Button mode={mode === 'week' ? 'contained' : 'outlined'} onPress={() => setMode('week')}>
+                    Uge
+                </Button>
+                <Button mode={mode === 'month' ? 'contained' : 'outlined'} onPress={() => setMode('month')}>
+                    Måned
+                </Button>
+            </View>
 
-                    return (
-                        <TouchableOpacity onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}>
-                            <View
-                                style={{
-                                    backgroundColor: 'white',
-                                    padding: 10,
-                                    marginRight: 10,
-                                    marginTop: 17,
-                                    borderRadius: 5,
-                                    borderLeftColor: item.userColor || '#000',
-                                    borderLeftWidth: 5,
-                                }}
-                            >
-                                <Text>{item.name}</Text>
-                                <Text>{formatDate(item.date)}</Text>
-                                {startString && endString ? <Text>{startString} - {endString}</Text> : null}
-                            </View>
-                        </TouchableOpacity>
-                    );
-                }}
-                renderEmptyDate={() => (
-                    <View style={{ padding: 10 }}>
-                        <Text>Ingen aftaler denne dag.</Text>
-                    </View>
-                )}
+            {/* 4) “BigCalendar” selv */}
+            <Calendar
+                events={events}
+                mode={mode}              // day | week | month
+                // Vil du vise start på “idag” -> date={new Date()}
+                // date={new Date()}
+                height={700}
+                overlapOffset={100}
+                onPressEvent={onPressEvent}
             />
 
-            {/* Placer IconButtons i et absolut positioneret view i bunden, uden baggrund */}
-            <View style={{ position: 'absolute', bottom: 10, left: 10, flexDirection: 'row' }}>
+            {/* BUND-KNAPPER (LOGOUT / COG / ADD EVENT) */}
+            <View style={[styles.row, { position: 'absolute', bottom: 10, left: 10 }]}>
                 <IconButton
                     icon="logout"
                     size={30}
@@ -163,8 +160,25 @@ export default function HomeScreen({ navigation, route }) {
             <FAB
                 style={{ position: 'absolute', margin: 16, right: 0, bottom: 60 }}
                 icon="plus"
-                onPress={() => navigation.navigate('AddEvent', { selectedDate, groupId })}
+                onPress={() => navigation.navigate('AddEvent', { groupId })}
             />
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    center: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    toolbar: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        padding: 8,
+    },
+});
