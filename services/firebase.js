@@ -8,12 +8,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyD1A0Qr7uVplY-QCWM_hnbtZsFT8m91LuA",
-    authDomain: "smartcalendar-599cd.firebaseapp.com",
-    projectId: "smartcalendar-599cd",
-    storageBucket: "smartcalendar-599cd.firebasestorage.app",
-    messagingSenderId: "22688391801",
-    appId: "1:22688391801:web:0ccd626a0c8ab0c05daaa8"
+    apiKey: "AIzaSyAK3IXWwb6746kCaD8It1K2ux2KLoQKWBo",
+    authDomain: "smartcalendar2-bcf0c.firebaseapp.com",
+    projectId: "smartcalendar2-bcf0c",
+    storageBucket: "smartcalendar2-bcf0c.firebasestorage.app",
+    messagingSenderId: "313425653241",
+    appId: "1:313425653241:web:7532499556faa60ebae128"
 };
 
 // Initialize Firebase
