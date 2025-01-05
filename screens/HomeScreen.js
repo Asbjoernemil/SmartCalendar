@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Agenda } from 'react-native-calendars';
 import { FAB, IconButton } from 'react-native-paper';
 import { formatDate, formatTime } from '../utils/dateUtils';
+import { doesEventOccurOnDate } from '../utils/recurrenceUtils'; // <--- Vores helper
 
 export default function HomeScreen({ navigation, route }) {
     const [items, setItems] = useState({});
@@ -29,54 +30,46 @@ export default function HomeScreen({ navigation, route }) {
 
         const newItems = {};
 
-        const start = new Date(day.timestamp - 15 * 24 * 60 * 60 * 1000);
-        const end = new Date(day.timestamp + 85 * 24 * 60 * 60 * 1000);
-
-        // For at initiere Agendaens dage
+        // Byg en range på -15 og +85 dage ift. day.timestamp 
+        // (Agenda-standard i dine for-loops)
         for (let i = -15; i < 85; i++) {
             const time = day.timestamp + i * 24 * 60 * 60 * 1000;
             const strTime = new Date(time).toISOString().split('T')[0];
             newItems[strTime] = [];
         }
 
-        // VIGTIGT: Ændr her
-        const q = query(
-            collection(db, 'events'),
-            where('date', '>=', start.toISOString().split('T')[0]),
-            where('date', '<=', end.toISOString().split('T')[0]),
-            // I stedet for where('groupId', '==', groupId)
-            where('groupIds', 'array-contains', groupId)
-        );
-
+        // Hent ALLE events for den pågældende group
+        // (Hvis du har mange, kan du lave en date-bounded query i stedet)
         try {
+            const ref = collection(db, 'events');
+            const q = query(ref, where('groupIds', 'array-contains', groupId));
             const querySnapshot = await getDocs(q);
-            console.log('Got querySnapshot with', querySnapshot.size, 'events');
+
             querySnapshot.forEach((docSnap) => {
                 const event = docSnap.data();
-                const strTime = event.date;
-                if (!newItems[strTime]) {
-                    newItems[strTime] = [];
-                }
-                newItems[strTime].push({
-                    id: docSnap.id,
-                    name: event.title,
-                    height: 50,
-                    date: event.date,
-                    userId: event.userId,
-                    userColor: event.userColor || '#000',
-                    startTime: event.startTime,
-                    endTime: event.endTime,
+                const eventId = docSnap.id;
+                // For hvert date i newItems => check doesEventOccurOnDate
+                Object.keys(newItems).forEach((dateKey) => {
+                    if (doesEventOccurOnDate(event, dateKey)) {
+                        // Ja -> tilføj til newItems[dateKey]
+                        newItems[dateKey].push({
+                            id: eventId,
+                            name: event.title,
+                            date: dateKey,
+                            userColor: event.userColor || '#000',
+                            startTime: event.startTime,
+                            endTime: event.endTime,
+                        });
+                    }
                 });
             });
-            console.log('newItems:', newItems);
+
             setItems(newItems);
         } catch (e) {
             console.log('Error fetching events:', e);
             setItems({});
         }
     };
-
-
 
     if (!groupId) {
         return (
@@ -103,13 +96,16 @@ export default function HomeScreen({ navigation, route }) {
                     navigation.navigate('DayEvents', { selectedDate: day.dateString, groupId });
                 }}
                 renderItem={(item, firstItemInDay) => {
+                    // item har {id, name, date, startTime, endTime, userColor}
                     const startTime = item.startTime ? new Date(item.startTime) : null;
                     const endTime = item.endTime ? new Date(item.endTime) : null;
                     const startString = startTime ? formatTime(startTime) : '';
                     const endString = endTime ? formatTime(endTime) : '';
 
                     return (
-                        <TouchableOpacity onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}>
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}
+                        >
                             <View
                                 style={{
                                     backgroundColor: 'white',
@@ -135,9 +131,8 @@ export default function HomeScreen({ navigation, route }) {
                 )}
             />
 
-            {/* Placer IconButtons i et absolut positioneret view i bunden, uden baggrund */}
+            {/* Bunden af skærmen (COG + CHAT + OPRET-knap) */}
             <View style={{ position: 'absolute', bottom: 10, left: 10, flexDirection: 'row' }}>
-
                 <IconButton
                     icon="cog"
                     size={30}
@@ -145,7 +140,7 @@ export default function HomeScreen({ navigation, route }) {
                     style={{ backgroundColor: 'white', borderRadius: 20, marginLeft: 10 }}
                 />
                 <IconButton
-                    icon="chat"   // <--- Dit nye chat ikon
+                    icon="chat"
                     size={30}
                     onPress={() => navigation.navigate('GroupChat', { groupId })}
                     style={{ backgroundColor: 'white', borderRadius: 20, marginLeft: 10 }}

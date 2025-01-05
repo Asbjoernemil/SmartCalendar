@@ -5,6 +5,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { useIsFocused } from '@react-navigation/native';
+import { doesEventOccurOnDate } from '../../utils/recurrenceUtils';
 
 export default function DayEventsScreen({ route, navigation }) {
     const { selectedDate, groupId } = route.params;
@@ -17,22 +18,26 @@ export default function DayEventsScreen({ route, navigation }) {
                 setEvents([]);
                 return;
             }
-            const q = query(
-                collection(db, 'events'),
-                where('date', '==', selectedDate),
-                where('groupIds', 'array-contains', groupId)
-            );
-            const querySnapshot = await getDocs(q);
-            const eventsData = [];
-            querySnapshot.forEach((docSnap) => {
-                const event = docSnap.data();
-                eventsData.push({
-                    id: docSnap.id,
-                    ...event,
-                    userColor: event.userColor || '#000',
-                });
+
+            // 1) Hent ALLE events for groupId
+            const ref = collection(db, 'events');
+            const q = query(ref, where('groupIds', 'array-contains', groupId));
+            const snapshot = await getDocs(q);
+
+            // 2) For hvert event => tjek doesEventOccurOnDate
+            const newArr = [];
+            snapshot.forEach((docSnap) => {
+                const evt = docSnap.data();
+                if (doesEventOccurOnDate(evt, selectedDate)) {
+                    newArr.push({
+                        id: docSnap.id,
+                        ...evt,
+                        userColor: evt.userColor || '#000',
+                    });
+                }
             });
-            setEvents(eventsData);
+
+            setEvents(newArr);
         };
 
         if (isFocused && groupId) {
@@ -102,8 +107,6 @@ const styles = StyleSheet.create({
         borderLeftWidth: 5,
     },
     bottomContainer: {
-        // Placerer DayView-knap til venstre, FAB til højre.
-        // Evt. giv en fast højde, baggrundsfarve, etc.
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -115,7 +118,7 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         borderRadius: 5,
         marginLeft: 16,
-        marginBottom: 16, // giv lidt bundmargin, så den ikke rører helt i bunden
+        marginBottom: 16,
     },
     fab: {
         margin: 16,

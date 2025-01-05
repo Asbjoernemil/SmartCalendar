@@ -17,21 +17,25 @@ export default function AddEventScreen({ navigation, route }) {
 
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
-    // Start- og sluttid
+    // Start-/sluttid
     const [startHour, setStartHour] = useState(12);
     const [startMinute, setStartMinute] = useState(0);
     const [endHour, setEndHour] = useState(13);
     const [endMinute, setEndMinute] = useState(0);
 
-    // Her holder vi styr på grupper
-    // A) Oprindeligt userGroups = [gId, gId2,...]
-    // B) Ny state: userGroupsWithNames = [{id, name}, {id, name}...]
+    // Grupper
     const [userGroupsWithNames, setUserGroupsWithNames] = useState([]);
     const [selectedGroups, setSelectedGroups] = useState([]);
+
+    // Gentagelse
+    const [recurrenceFrequency, setRecurrenceFrequency] = useState('NONE');
+    const [recurrenceEndDate, setRecurrenceEndDate] = useState(null);
+    const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
 
     const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
+    // Hent brugerens grupper
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
@@ -40,7 +44,6 @@ export default function AddEventScreen({ navigation, route }) {
             return;
         }
 
-        // 1) Hent userData -> userData.groups => fx ["grp1", "grp2"]
         (async () => {
             try {
                 const userDocRef = doc(db, 'users', user.uid);
@@ -49,7 +52,6 @@ export default function AddEventScreen({ navigation, route }) {
                     const userData = userSnap.data();
                     const gIds = userData.groups || [];
 
-                    // 2) For hver gId -> hent groupDoc -> push {id, name}
                     const newArray = [];
                     for (const gId of gIds) {
                         const gRef = doc(db, 'groups', gId);
@@ -58,7 +60,7 @@ export default function AddEventScreen({ navigation, route }) {
                             const gData = gSnap.data();
                             newArray.push({
                                 id: gId,
-                                name: gData.name || gId, // fallback
+                                name: gData.name || gId,
                             });
                         } else {
                             newArray.push({ id: gId, name: gId });
@@ -74,7 +76,12 @@ export default function AddEventScreen({ navigation, route }) {
         })();
     }, []);
 
+    // Opret event i Firestore
     const handleAddEvent = async () => {
+        if (!title.trim()) {
+            Alert.alert('Fejl', 'Du mangler at angive en titel.');
+            return;
+        }
         if (selectedGroups.length === 0) {
             Alert.alert('Ingen grupper valgt', 'Vælg mindst én gruppe, der skal have eventet.');
             return;
@@ -107,16 +114,22 @@ export default function AddEventScreen({ navigation, route }) {
             const userData = userSnap.exists() ? userSnap.data() : {};
             const userColor = userData.color || '#000000';
 
+            // Byg recurrence-objekt
+            const recurrenceObj = {
+                frequency: recurrenceFrequency, // "NONE","DAILY","WEEKLY","MONTHLY","YEARLY"
+                endDate: recurrenceEndDate ? recurrenceEndDate.toISOString().split('T')[0] : null,
+            };
+
             await addDoc(collection(db, 'events'), {
                 title,
                 description,
-                date: dateString,
+                date: dateString, // Startdato
                 startTime: startTimeString,
                 endTime: endTimeString,
                 userId: user.uid,
                 userColor: userColor,
-                // Her gemmes selve IDs, selvom vi viste navne til brugeren
                 groupIds: selectedGroups,
+                recurrence: recurrenceObj,
             });
 
             Alert.alert('Event oprettet!', 'Din event blev oprettet i de valgte grupper.');
@@ -127,28 +140,48 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
-    // DatePicker-funktioner
+    // DatoPicker for “dato”
     const showDatePicker = () => setDatePickerVisibility(true);
     const hideDatePicker = () => setDatePickerVisibility(false);
     const handleDateConfirm = (pickedDate) => {
         hideDatePicker();
-        if (pickedDate) setDate(pickedDate);
+        if (pickedDate) {
+            setDate(pickedDate);
+        }
+    };
+
+    // DatoPicker for “recurrenceEndDate”
+    const handleRecurrenceEndConfirm = (pickedDate) => {
+        setShowRecurrenceEndPicker(false);
+        if (pickedDate) {
+            setRecurrenceEndDate(pickedDate);
+        }
     };
 
     const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
     const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
 
+    const recurrenceOptions = [
+        { label: 'Ingen gentagelse', value: 'NONE' },
+        { label: 'Daglig', value: 'DAILY' },
+        { label: 'Ugentlig', value: 'WEEKLY' },
+        { label: 'Månedlig', value: 'MONTHLY' },
+        { label: 'Årlig', value: 'YEARLY' },
+    ];
+
     return (
         <ScrollView style={styles.container}>
-            <Text variant="headlineMedium" style={{ marginBottom: 10 }}>Ny Aftale</Text>
+            <Text variant="headlineMedium" style={styles.header}>
+                Ny Aftale
+            </Text>
 
+            {/* Titel og beskrivelse */}
             <TextInput
-                label="Titel"
+                label="Titel (påkrævet)"
                 value={title}
                 onChangeText={setTitle}
                 style={styles.textInput}
             />
-
             <TextInput
                 label="Beskrivelse"
                 value={description}
@@ -157,7 +190,8 @@ export default function AddEventScreen({ navigation, route }) {
                 multiline
             />
 
-            <Button onPress={showDatePicker} style={styles.dateButton}>
+            {/* Vælg dato */}
+            <Button onPress={showDatePicker} mode="outlined" style={styles.dateButton}>
                 Vælg dato: {formatDate(date.toISOString().split('T')[0])}
             </Button>
             <DateTimePickerModal
@@ -168,46 +202,95 @@ export default function AddEventScreen({ navigation, route }) {
                 onCancel={hideDatePicker}
             />
 
-            <Text style={{ marginBottom: 5 }}>Starttid: {formatTime(displayedStartTime)}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-                <Picker
-                    selectedValue={startHour}
-                    style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setStartHour(itemValue)}
-                >
-                    {hours.map((h) => <Picker.Item key={h} label={h.toString()} value={h} />)}
-                </Picker>
-                <Text style={{ marginHorizontal: 5 }}>:</Text>
-                <Picker
-                    selectedValue={startMinute}
-                    style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setStartMinute(itemValue)}
-                >
-                    {minutes.map((m) => <Picker.Item key={m} label={m.toString()} value={m} />)}
-                </Picker>
+            {/* Start/Slut tid */}
+            <View style={styles.timeContainer}>
+                <Text style={styles.timeLabel}>Starttid: {formatTime(displayedStartTime)}</Text>
+                <View style={styles.timeRow}>
+                    <Picker
+                        selectedValue={startHour}
+                        style={styles.picker}
+                        onValueChange={(itemValue) => setStartHour(itemValue)}
+                    >
+                        {hours.map((h) => (
+                            <Picker.Item key={h} label={h.toString()} value={h} />
+                        ))}
+                    </Picker>
+                    <Text>:</Text>
+                    <Picker
+                        selectedValue={startMinute}
+                        style={styles.picker}
+                        onValueChange={(itemValue) => setStartMinute(itemValue)}
+                    >
+                        {minutes.map((m) => (
+                            <Picker.Item key={m} label={m.toString()} value={m} />
+                        ))}
+                    </Picker>
+                </View>
             </View>
 
-            <Text style={{ marginBottom: 5 }}>Sluttid: {formatTime(displayedEndTime)}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+            <View style={styles.timeContainer}>
+                <Text style={styles.timeLabel}>Sluttid: {formatTime(displayedEndTime)}</Text>
+                <View style={styles.timeRow}>
+                    <Picker
+                        selectedValue={endHour}
+                        style={styles.picker}
+                        onValueChange={(itemValue) => setEndHour(itemValue)}
+                    >
+                        {hours.map((h) => (
+                            <Picker.Item key={h} label={h.toString()} value={h} />
+                        ))}
+                    </Picker>
+                    <Text>:</Text>
+                    <Picker
+                        selectedValue={endMinute}
+                        style={styles.picker}
+                        onValueChange={(itemValue) => setEndMinute(itemValue)}
+                    >
+                        {minutes.map((m) => (
+                            <Picker.Item key={m} label={m.toString()} value={m} />
+                        ))}
+                    </Picker>
+                </View>
+            </View>
+
+            {/* Gentagelse */}
+            <View style={styles.card}>
+                <Text variant="titleMedium" style={{ marginBottom: 10 }}>
+                    Gentag aftale?
+                </Text>
+
                 <Picker
-                    selectedValue={endHour}
-                    style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setEndHour(itemValue)}
+                    selectedValue={recurrenceFrequency}
+                    style={styles.picker}
+                    onValueChange={(val) => setRecurrenceFrequency(val)}
                 >
-                    {hours.map((h) => <Picker.Item key={h} label={h.toString()} value={h} />)}
+                    {recurrenceOptions.map((opt) => (
+                        <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
+                    ))}
                 </Picker>
-                <Text style={{ marginHorizontal: 5 }}>:</Text>
-                <Picker
-                    selectedValue={endMinute}
-                    style={{ height: 50, width: 80 }}
-                    onValueChange={(itemValue) => setEndMinute(itemValue)}
-                >
-                    {minutes.map((m) => <Picker.Item key={m} label={m.toString()} value={m} />)}
-                </Picker>
+
+                {recurrenceFrequency !== 'NONE' && (
+                    <View style={{ marginTop: 10 }}>
+                        <Button mode="outlined" onPress={() => setShowRecurrenceEndPicker(true)}>
+                            {recurrenceEndDate
+                                ? `Slutdato: ${formatDate(recurrenceEndDate.toISOString().split('T')[0])}`
+                                : 'Vælg slutdato for gentagelse'}
+                        </Button>
+                        <DateTimePickerModal
+                            isVisible={showRecurrenceEndPicker}
+                            mode="date"
+                            date={recurrenceEndDate || new Date()}
+                            onConfirm={handleRecurrenceEndConfirm}
+                            onCancel={() => setShowRecurrenceEndPicker(false)}
+                        />
+                    </View>
+                )}
             </View>
 
             {/* Vælg grupper */}
-            <Text variant="titleMedium" style={{ marginVertical: 10 }}>Vælg grupper:</Text>
+            <Text variant="titleMedium" style={{ marginVertical: 10 }}>
+                Vælg grupper:
+            </Text>
             {userGroupsWithNames.length === 0 && (
                 <Text>Du er ikke medlem af nogen grupper endnu.</Text>
             )}
@@ -216,12 +299,11 @@ export default function AddEventScreen({ navigation, route }) {
                 return (
                     <Checkbox.Item
                         key={groupObj.id}
-                        // Viser gruppens NAVN i stedet for ID
                         label={groupObj.name}
                         status={checked ? 'checked' : 'unchecked'}
                         onPress={() => {
                             if (checked) {
-                                setSelectedGroups(selectedGroups.filter(gid => gid !== groupObj.id));
+                                setSelectedGroups(selectedGroups.filter((gid) => gid !== groupObj.id));
                             } else {
                                 setSelectedGroups([...selectedGroups, groupObj.id]);
                             }
@@ -238,8 +320,43 @@ export default function AddEventScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
-    textInput: { marginBottom: 10 },
-    dateButton: { marginBottom: 10, alignSelf: 'flex-start' },
-    button: { marginVertical: 10 },
+    container: {
+        flex: 1,
+        padding: 20,
+        backgroundColor: '#f8f8f8',
+    },
+    header: {
+        marginBottom: 10,
+    },
+    textInput: {
+        marginBottom: 10,
+    },
+    dateButton: {
+        marginBottom: 10,
+        alignSelf: 'flex-start',
+    },
+    timeContainer: {
+        marginBottom: 10,
+    },
+    timeLabel: {
+        marginBottom: 5,
+    },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    picker: {
+        width: 80,
+        height: 50,
+        marginHorizontal: 5,
+    },
+    card: {
+        backgroundColor: 'white',
+        padding: 10,
+        borderRadius: 6,
+        marginBottom: 20,
+    },
+    button: {
+        marginVertical: 10,
+    },
 });
