@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { TextInput, Button, Text } from 'react-native-paper';
+import { TextInput, Button, Text, IconButton } from 'react-native-paper';
 import { auth, db } from '../../services/firebase';
 import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 
 export default function GroupsScreen({ navigation }) {
     const [currentGroupId, setCurrentGroupId] = useState(null);
@@ -22,10 +23,6 @@ export default function GroupsScreen({ navigation }) {
             if (userSnap.exists()) {
                 const data = userSnap.data();
                 setUserData(data);
-                // Her arbejder vi ikke længere med groupId, men med groups array
-                // Hvis data.groups ikke findes eller er tomt, er brugeren ikke i nogen grupper
-                // currentGroupId giver måske ikke længere mening her, da brugeren kan være i flere grupper
-                // Du kan vise den "første" gruppe eller lade være.
                 setCurrentGroupId(data.groups && data.groups.length > 0 ? data.groups[0] : null);
             } else {
                 setUserData({});
@@ -51,13 +48,10 @@ export default function GroupsScreen({ navigation }) {
             groups: userData && userData.groups ? [...userData.groups, groupRef.id] : [groupRef.id]
         }, { merge: true });
 
-        // Opdater currentGroupId for at vise at brugeren nu er i en gruppe (valgfrit)
         setCurrentGroupId(groupRef.id);
         alert('Gruppe oprettet og du er nu medlem af den.');
         setGroupName('');
-
-        // Tilføj denne linje:
-        navigation.navigate('GroupList'); // Tilbage til gruppelisten
+        navigation.navigate('GroupList');
     };
 
     const handleJoinGroup = async () => {
@@ -83,9 +77,18 @@ export default function GroupsScreen({ navigation }) {
         setCurrentGroupId(joinGroupId);
         alert('Du har tilsluttet dig gruppen.');
         setJoinGroupId('');
+        navigation.navigate('GroupList');
+    };
 
-        // Tilføj denne linje:
-        navigation.navigate('GroupList'); // Tilbage til gruppelisten
+    const handleLogout = () => {
+        signOut(auth)
+            .then(() => {
+                navigation.replace('Login');
+            })
+            .catch((error) => {
+                console.log(error);
+                alert('Logout fejlede. Prøv igen.');
+            });
     };
 
     return (
@@ -133,6 +136,17 @@ export default function GroupsScreen({ navigation }) {
             >
                 Tilbage til gruppeliste
             </Button>
+
+            {/* Logout-knap placeret nederst, evt. med en marginTop */}
+            <View style={{ marginTop: 40, alignItems: 'center' }}>
+                <IconButton
+                    icon="logout"
+                    size={30}
+                    onPress={handleLogout}
+                    style={{ backgroundColor: '#f0f0f0', borderRadius: 20 }}
+                />
+                <Text style={{ marginTop: 5 }}>Log ud</Text>
+            </View>
         </View>
     );
 }

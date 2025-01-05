@@ -76,16 +76,7 @@ export default function HomeScreen({ navigation, route }) {
         }
     };
 
-    const handleLogout = () => {
-        signOut(auth)
-            .then(() => {
-                navigation.replace('Login');
-            })
-            .catch((error) => {
-                console.log(error);
-                alert('Logout fejlede. Prøv igen.');
-            });
-    };
+
 
     if (!groupId) {
         return (
@@ -146,16 +137,17 @@ export default function HomeScreen({ navigation, route }) {
 
             {/* Placer IconButtons i et absolut positioneret view i bunden, uden baggrund */}
             <View style={{ position: 'absolute', bottom: 10, left: 10, flexDirection: 'row' }}>
-                <IconButton
-                    icon="logout"
-                    size={30}
-                    onPress={handleLogout}
-                    style={{ backgroundColor: 'white', borderRadius: 20 }}
-                />
+
                 <IconButton
                     icon="cog"
                     size={30}
                     onPress={() => navigation.navigate('Groups')}
+                    style={{ backgroundColor: 'white', borderRadius: 20, marginLeft: 10 }}
+                />
+                <IconButton
+                    icon="chat"   // <--- Dit nye chat ikon
+                    size={30}
+                    onPress={() => navigation.navigate('GroupChat', { groupId })}
                     style={{ backgroundColor: 'white', borderRadius: 20, marginLeft: 10 }}
                 />
             </View>

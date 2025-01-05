@@ -5,12 +5,9 @@ import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
-
-// 1) Importer datepicker-modal
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 export default function AddEventScreen({ navigation, route }) {
-    // Hvis du vil bruge selectedDate fra route, beholder du det.
     const { selectedDate } = route.params || {};
     const initialDate = selectedDate ? new Date(selectedDate) : new Date();
 
@@ -18,7 +15,6 @@ export default function AddEventScreen({ navigation, route }) {
     const [description, setDescription] = useState('');
     const [date, setDate] = useState(initialDate);
 
-    // State til at styre, om datepicker-modal vises
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
     // Start- og sluttid
@@ -28,13 +24,14 @@ export default function AddEventScreen({ navigation, route }) {
     const [endMinute, setEndMinute] = useState(0);
 
     // Her holder vi styr på grupper
-    const [userGroups, setUserGroups] = useState([]); // De grupper, som brugeren er medlem af
-    const [selectedGroups, setSelectedGroups] = useState([]); // De grupper, brugeren krydser af
+    // A) Oprindeligt userGroups = [gId, gId2,...]
+    // B) Ny state: userGroupsWithNames = [{id, name}, {id, name}...]
+    const [userGroupsWithNames, setUserGroupsWithNames] = useState([]);
+    const [selectedGroups, setSelectedGroups] = useState([]);
 
-    const hours = [...Array(24).keys()]; // [0..23]
+    const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
-    // 2) Hent brugerens grupper
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
@@ -43,14 +40,31 @@ export default function AddEventScreen({ navigation, route }) {
             return;
         }
 
+        // 1) Hent userData -> userData.groups => fx ["grp1", "grp2"]
         (async () => {
             try {
                 const userDocRef = doc(db, 'users', user.uid);
                 const userSnap = await getDoc(userDocRef);
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
-                    const groupsArr = userData.groups || [];
-                    setUserGroups(groupsArr);
+                    const gIds = userData.groups || [];
+
+                    // 2) For hver gId -> hent groupDoc -> push {id, name}
+                    const newArray = [];
+                    for (const gId of gIds) {
+                        const gRef = doc(db, 'groups', gId);
+                        const gSnap = await getDoc(gRef);
+                        if (gSnap.exists()) {
+                            const gData = gSnap.data();
+                            newArray.push({
+                                id: gId,
+                                name: gData.name || gId, // fallback
+                            });
+                        } else {
+                            newArray.push({ id: gId, name: gId });
+                        }
+                    }
+                    setUserGroupsWithNames(newArray);
                 } else {
                     Alert.alert('Ingen brugerdata', 'Der blev ikke fundet data for denne bruger.');
                 }
@@ -60,7 +74,6 @@ export default function AddEventScreen({ navigation, route }) {
         })();
     }, []);
 
-    // 3) Funktionen, der opretter selve eventet
     const handleAddEvent = async () => {
         if (selectedGroups.length === 0) {
             Alert.alert('Ingen grupper valgt', 'Vælg mindst én gruppe, der skal have eventet.');
@@ -88,21 +101,21 @@ export default function AddEventScreen({ navigation, route }) {
         }
 
         try {
-            // Hent brugerfarve
+            // Hent userColor
             const userDocRef = doc(db, 'users', user.uid);
             const userSnap = await getDoc(userDocRef);
             const userData = userSnap.exists() ? userSnap.data() : {};
             const userColor = userData.color || '#000000';
 
-            // Opret event med alle valgte grupper
             await addDoc(collection(db, 'events'), {
                 title,
                 description,
-                date: dateString, // lagres i Firestore
+                date: dateString,
                 startTime: startTimeString,
                 endTime: endTimeString,
                 userId: user.uid,
                 userColor: userColor,
+                // Her gemmes selve IDs, selvom vi viste navne til brugeren
                 groupIds: selectedGroups,
             });
 
@@ -114,24 +127,14 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
-    // 4) Datepicker-modal: Vis/Skjul og håndtér valg
-    const showDatePicker = () => {
-        setDatePickerVisibility(true);
-    };
-
-    const hideDatePicker = () => {
-        setDatePickerVisibility(false);
-    };
-
-    // Når brugeren bekræfter en ny dato:
+    // DatePicker-funktioner
+    const showDatePicker = () => setDatePickerVisibility(true);
+    const hideDatePicker = () => setDatePickerVisibility(false);
     const handleDateConfirm = (pickedDate) => {
         hideDatePicker();
-        if (pickedDate) {
-            setDate(pickedDate);
-        }
+        if (pickedDate) setDate(pickedDate);
     };
 
-    // De to "visningsdatoer" for start-/slut-tid i UI
     const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
     const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
 
@@ -139,7 +142,6 @@ export default function AddEventScreen({ navigation, route }) {
         <ScrollView style={styles.container}>
             <Text variant="headlineMedium" style={{ marginBottom: 10 }}>Ny Aftale</Text>
 
-            {/* Titel */}
             <TextInput
                 label="Titel"
                 value={title}
@@ -147,7 +149,6 @@ export default function AddEventScreen({ navigation, route }) {
                 style={styles.textInput}
             />
 
-            {/* Beskrivelse */}
             <TextInput
                 label="Beskrivelse"
                 value={description}
@@ -156,19 +157,17 @@ export default function AddEventScreen({ navigation, route }) {
                 multiline
             />
 
-            {/* 5) Dato-knap + Modal DatePicker */}
             <Button onPress={showDatePicker} style={styles.dateButton}>
                 Vælg dato: {formatDate(date.toISOString().split('T')[0])}
             </Button>
             <DateTimePickerModal
                 isVisible={isDatePickerVisible}
                 mode="date"
-                date={date}                // start-værdi
+                date={date}
                 onConfirm={handleDateConfirm}
                 onCancel={hideDatePicker}
             />
 
-            {/* Starttid */}
             <Text style={{ marginBottom: 5 }}>Starttid: {formatTime(displayedStartTime)}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Picker
@@ -176,25 +175,18 @@ export default function AddEventScreen({ navigation, route }) {
                     style={{ height: 50, width: 80 }}
                     onValueChange={(itemValue) => setStartHour(itemValue)}
                 >
-                    {hours.map((h) => (
-                        <Picker.Item key={h} label={h.toString()} value={h} />
-                    ))}
+                    {hours.map((h) => <Picker.Item key={h} label={h.toString()} value={h} />)}
                 </Picker>
-
                 <Text style={{ marginHorizontal: 5 }}>:</Text>
-
                 <Picker
                     selectedValue={startMinute}
                     style={{ height: 50, width: 80 }}
                     onValueChange={(itemValue) => setStartMinute(itemValue)}
                 >
-                    {minutes.map((m) => (
-                        <Picker.Item key={m} label={m.toString()} value={m} />
-                    ))}
+                    {minutes.map((m) => <Picker.Item key={m} label={m.toString()} value={m} />)}
                 </Picker>
             </View>
 
-            {/* Sluttid */}
             <Text style={{ marginBottom: 5 }}>Sluttid: {formatTime(displayedEndTime)}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Picker
@@ -202,52 +194,43 @@ export default function AddEventScreen({ navigation, route }) {
                     style={{ height: 50, width: 80 }}
                     onValueChange={(itemValue) => setEndHour(itemValue)}
                 >
-                    {hours.map((h) => (
-                        <Picker.Item key={h} label={h.toString()} value={h} />
-                    ))}
+                    {hours.map((h) => <Picker.Item key={h} label={h.toString()} value={h} />)}
                 </Picker>
-
                 <Text style={{ marginHorizontal: 5 }}>:</Text>
-
                 <Picker
                     selectedValue={endMinute}
                     style={{ height: 50, width: 80 }}
                     onValueChange={(itemValue) => setEndMinute(itemValue)}
                 >
-                    {minutes.map((m) => (
-                        <Picker.Item key={m} label={m.toString()} value={m} />
-                    ))}
+                    {minutes.map((m) => <Picker.Item key={m} label={m.toString()} value={m} />)}
                 </Picker>
             </View>
 
-            {/* Liste af brugerens grupper som checkbokse */}
+            {/* Vælg grupper */}
             <Text variant="titleMedium" style={{ marginVertical: 10 }}>Vælg grupper:</Text>
-            {userGroups.length === 0 && (
+            {userGroupsWithNames.length === 0 && (
                 <Text>Du er ikke medlem af nogen grupper endnu.</Text>
             )}
-            {userGroups.map((gId) => {
-                const checked = selectedGroups.includes(gId);
+            {userGroupsWithNames.map((groupObj) => {
+                const checked = selectedGroups.includes(groupObj.id);
                 return (
                     <Checkbox.Item
-                        key={gId}
-                        label={gId}
+                        key={groupObj.id}
+                        // Viser gruppens NAVN i stedet for ID
+                        label={groupObj.name}
                         status={checked ? 'checked' : 'unchecked'}
                         onPress={() => {
                             if (checked) {
-                                setSelectedGroups(selectedGroups.filter(id => id !== gId));
+                                setSelectedGroups(selectedGroups.filter(gid => gid !== groupObj.id));
                             } else {
-                                setSelectedGroups([...selectedGroups, gId]);
+                                setSelectedGroups([...selectedGroups, groupObj.id]);
                             }
                         }}
                     />
                 );
             })}
 
-            <Button
-                mode="contained"
-                onPress={handleAddEvent}
-                style={styles.button}
-            >
+            <Button mode="contained" onPress={handleAddEvent} style={styles.button}>
                 Tilføj aftale
             </Button>
         </ScrollView>
@@ -255,18 +238,8 @@ export default function AddEventScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 20,
-    },
-    textInput: {
-        marginBottom: 10,
-    },
-    dateButton: {
-        marginBottom: 10,
-        alignSelf: 'flex-start',
-    },
-    button: {
-        marginVertical: 10,
-    },
+    container: { flex: 1, padding: 20 },
+    textInput: { marginBottom: 10 },
+    dateButton: { marginBottom: 10, alignSelf: 'flex-start' },
+    button: { marginVertical: 10 },
 });

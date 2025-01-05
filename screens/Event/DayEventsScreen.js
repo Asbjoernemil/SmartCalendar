@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { FAB } from 'react-native-paper';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db, auth } from '../../services/firebase';
+import { db } from '../../services/firebase';
 import { formatDate, formatTime } from '../../utils/dateUtils';
 import { useIsFocused } from '@react-navigation/native';
-import { TouchableOpacity } from 'react-native';
 
 export default function DayEventsScreen({ route, navigation }) {
     const { selectedDate, groupId } = route.params;
@@ -18,14 +17,11 @@ export default function DayEventsScreen({ route, navigation }) {
                 setEvents([]);
                 return;
             }
-
-            // Her bruger vi 'groupIds' (array) og 'array-contains'
             const q = query(
                 collection(db, 'events'),
                 where('date', '==', selectedDate),
                 where('groupIds', 'array-contains', groupId)
             );
-
             const querySnapshot = await getDocs(q);
             const eventsData = [];
             querySnapshot.forEach((docSnap) => {
@@ -54,14 +50,7 @@ export default function DayEventsScreen({ route, navigation }) {
             <TouchableOpacity
                 onPress={() => navigation.navigate('EventDetails', { eventId: item.id })}
             >
-                <View style={{
-                    padding: 10,
-                    backgroundColor: 'white',
-                    marginVertical: 5,
-                    borderRadius: 5,
-                    borderLeftColor: item.userColor || '#000',
-                    borderLeftWidth: 5
-                }}>
+                <View style={[styles.eventContainer, { borderLeftColor: item.userColor }]}>
                     <Text>{item.title || item.name}</Text>
                     {startString && endString && (
                         <Text>{startString} - {endString}</Text>
@@ -82,23 +71,53 @@ export default function DayEventsScreen({ route, navigation }) {
                 keyExtractor={(item) => item.id}
                 ListEmptyComponent={<Text>Ingen aftaler denne dag.</Text>}
             />
-            <FAB
-                style={{ position: 'absolute', margin: 16, right: 0, bottom: 0 }}
-                icon="plus"
-                onPress={() => navigation.navigate('AddEvent', { selectedDate, groupId })}
-            />
-            <TouchableOpacity
-                style={{
-                    backgroundColor: '#6200ee',
-                    padding: 10,
-                    borderRadius: 5,
-                    alignItems: 'center',
-                    marginTop: 10,
-                }}
-                onPress={() => navigation.navigate('DayView', { selectedDate, groupId })}
-            >
-                <Text style={{ color: 'white' }}>Vis Day View</Text>
-            </TouchableOpacity>
+
+            {/* Bunden: en container til DayView-knap + FAB */}
+            <View style={styles.bottomContainer}>
+                {/* Venstre: DayView-knap */}
+                <TouchableOpacity
+                    style={styles.dayViewButton}
+                    onPress={() => navigation.navigate('DayView', { selectedDate, groupId })}
+                >
+                    <Text style={{ color: 'white' }}>Vis Day View</Text>
+                </TouchableOpacity>
+
+                {/* Højre: FAB plus-knap */}
+                <FAB
+                    style={styles.fab}
+                    icon="plus"
+                    onPress={() => navigation.navigate('AddEvent', { selectedDate, groupId })}
+                />
+            </View>
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    eventContainer: {
+        padding: 10,
+        backgroundColor: 'white',
+        marginVertical: 5,
+        borderRadius: 5,
+        borderLeftWidth: 5,
+    },
+    bottomContainer: {
+        // Placerer DayView-knap til venstre, FAB til højre.
+        // Evt. giv en fast højde, baggrundsfarve, etc.
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 10,
+    },
+    dayViewButton: {
+        backgroundColor: '#6200ee',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 5,
+        marginLeft: 16,
+        marginBottom: 16, // giv lidt bundmargin, så den ikke rører helt i bunden
+    },
+    fab: {
+        margin: 16,
+    },
+});
