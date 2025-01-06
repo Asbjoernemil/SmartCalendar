@@ -7,58 +7,80 @@ import { formatDate, formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
+// EventDetailsScreen viser detaljer for et enkelt event.
 export default function EventDetailsScreen({ route, navigation }) {
+    // eventId modtages fra navigation ( DayEventsScreen eller Agenda).
     const { eventId } = route.params;
+
+    // State til at gemme eventets titel, beskrivelse, dato mm.
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [date, setDate] = useState(new Date());  // -> Også redigerbar
+    const [date, setDate] = useState(new Date());  // bruges til at vise/ændre dato i datepicker
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
+    // Start- og sluttid, i timer og minutter.
     const [startHour, setStartHour] = useState(12);
     const [startMinute, setStartMinute] = useState(0);
     const [endHour, setEndHour] = useState(13);
     const [endMinute, setEndMinute] = useState(0);
 
+    // Styrer, "redigerings-tilstand" og om User har ret til at redigere.
     const [isEditing, setIsEditing] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
 
+    // Navn gemmes (displayName) på User, der oprettede aftalen.
     const [ownerDisplayName, setOwnerDisplayName] = useState('');
 
+    // Kommentar state (liste kommentarer, + inputfelt).
     const [comments, setComments] = useState([]);
     const [commentText, setCommentText] = useState('');
 
+    // Helper lister til <Picker>, kan vælge timetal og minutter.
     const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
-    // Hent event
+    /**
+     * useEffect #1:
+     * - Henter event-document fra Firestore (hvis findes).
+     * - Gemmer titel, beskrivelse, tidsdata mm. i state.
+     * - Checker, om nuværende User er ejeren af eventet (canEdit).
+     */
     useEffect(() => {
         const fetchEvent = async () => {
             const docRef = doc(db, 'events', eventId);
             const docSnap = await getDoc(docRef);
+
             if (docSnap.exists()) {
                 const eventData = docSnap.data();
+
+                // Sæt titel og beskrivelse i state.
                 setTitle(eventData.title || '');
                 setDescription(eventData.description || '');
 
+                // Tjek, om den aktuelle User er eventets ejer (userId).
                 const eventOwnerId = eventData.userId;
                 setCanEdit(eventOwnerId === auth.currentUser?.uid);
 
-                // Hent ejerens displayName
+                // Hent ejerens displayName (fra users/<userId>).
                 const userDocRef = doc(db, 'users', eventOwnerId);
                 const userSnap = await getDoc(userDocRef);
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
+                    // Brug enten displayName eller eventOwnerId som fallback.
                     setOwnerDisplayName(userData.displayName || eventOwnerId);
                 } else {
                     setOwnerDisplayName(eventOwnerId);
                 }
 
-                // Tider
+                // Hent start- og sluttid, og sæt dem i state, hvis de findes.
                 if (eventData.startTime && eventData.endTime) {
                     const startTime = new Date(eventData.startTime);
                     const endTime = new Date(eventData.endTime);
+                    // Tjek om er "valide" datoer
                     if (!isNaN(startTime) && !isNaN(endTime)) {
-                        setDate(startTime);  // -> VIGTIGT: gem startTime's DATO
+                        // Vælg startTime's DATO som "date" i state.
+                        setDate(startTime);
+                        // Sæt timer/minutter for start- og sluttid.
                         setStartHour(startTime.getHours());
                         setStartMinute(startTime.getMinutes());
                         setEndHour(endTime.getHours());
@@ -73,7 +95,11 @@ export default function EventDetailsScreen({ route, navigation }) {
         fetchEvent();
     }, [eventId]);
 
-    // Lyt til kommentarer
+    /**
+     * useEffect #2:
+     * - Lytter på subcollection 'comments' realtid
+     *   (via onSnapshot), hele tiden får nye kommentarer uden at refreshe.
+     */
     useEffect(() => {
         const commentsRef = collection(db, 'events', eventId, 'comments');
         const unsubscribe = onSnapshot(commentsRef, (snapshot) => {
@@ -81,17 +107,20 @@ export default function EventDetailsScreen({ route, navigation }) {
             snapshot.forEach((docSnap) => {
                 newComments.push({ id: docSnap.id, ...docSnap.data() });
             });
-            // Sortér kommentarer
+            // Sortér kommentarerne kronologisk efter timestamp
             newComments.sort((a, b) => {
                 if (!a.timestamp || !b.timestamp) return 0;
                 return a.timestamp.toDate() - b.timestamp.toDate();
             });
             setComments(newComments);
         });
+        // Stopper, når komponenten unmountes
         return () => unsubscribe();
     }, [eventId]);
 
-    // Dato-picker
+    /**
+     * Dato-picker til at opdatere eventets dato.
+     */
     const showDatePicker = () => setDatePickerVisibility(true);
     const hideDatePicker = () => setDatePickerVisibility(false);
     const handleDatePicked = (pickedDate) => {
@@ -99,37 +128,51 @@ export default function EventDetailsScreen({ route, navigation }) {
         if (pickedDate) setDate(pickedDate);
     };
 
-    // Gem ændringer
+    /**
+     * handleUpdateEvent:
+     * - Når User bekræfter redigering, opdateres doc i Firestore
+     *   ny titel, beskrivelses og tid.
+     */
     const handleUpdateEvent = async () => {
+        // Lav en string "YYYY-MM-DD" fra date-state
         const dateString = date.toISOString().split('T')[0];
+
+        //start-/sluttid (JS Date), sat til kl. (startHour, startMinute).
         const updatedStart = new Date(dateString);
         updatedStart.setHours(startHour, startMinute, 0, 0);
+
         const updatedEnd = new Date(dateString);
         updatedEnd.setHours(endHour, endMinute, 0, 0);
 
+        // Tjek sluttid > starttid
         if (updatedEnd <= updatedStart) {
             Alert.alert('Ugyldig tid', 'Sluttiden skal være efter starttiden.');
             return;
         }
 
         try {
+            // Opdater doc i 'events' collection
             const docRef = doc(db, 'events', eventId);
             await updateDoc(docRef, {
                 title,
                 description,
                 startTime: updatedStart.toISOString(),
                 endTime: updatedEnd.toISOString(),
-                date: dateString // -> valgfrit, hvis du vil opdatere basis-dato
+                date: dateString
             });
             Alert.alert('OK', 'Aftalen er opdateret');
-            setIsEditing(false);
+            setIsEditing(false); // Luk redigering
         } catch (error) {
             console.log('Fejl ved opdatering:', error);
             Alert.alert('Fejl', 'Kunne ikke opdatere. Prøv igen.');
         }
     };
 
-    // Slet aftale
+    /**
+     * handleDeleteEvent:
+     * - Alert for at bekræfte sletning.
+     * - Sletter derefter dokumentet i Firestore
+     */
     const handleDeleteEvent = async () => {
         Alert.alert('Bekræft sletning', 'Sikker på at slette?', [
             { text: 'Annuller', style: 'cancel' },
@@ -151,14 +194,21 @@ export default function EventDetailsScreen({ route, navigation }) {
         ]);
     };
 
-    // Tilføj kommentar
+    /**
+     * handleAddComment:
+     * - Tilføjer kommentar (text, userId, userName, timestamp)
+     *   subcollectionen 'events/<eventId>/comments'.
+     */
     const handleAddComment = async () => {
-        if (!commentText.trim()) return;
+        if (!commentText.trim()) return; // Tom kommentar ignoreres
+
         const user = auth.currentUser;
         if (!user) return;
 
+        // Hent userName / displayName
         const userDocRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userDocRef);
+
         let userName = user.uid;
         if (userSnap.exists()) {
             const userData = userSnap.data();
@@ -167,6 +217,7 @@ export default function EventDetailsScreen({ route, navigation }) {
 
         const commentsRef = collection(db, 'events', eventId, 'comments');
         try {
+            // Opret ny kommentar
             await addDoc(commentsRef, {
                 text: commentText.trim(),
                 userId: user.uid,
@@ -180,7 +231,10 @@ export default function EventDetailsScreen({ route, navigation }) {
         }
     };
 
-    // Render en kommentar
+    /**
+     * renderComment:
+     * - FlatList callback, der viser hver enkelt kommentar med userName og tid.
+     */
     const renderComment = ({ item }) => {
         const timeString = item.timestamp ? formatTime(item.timestamp.toDate()) : '';
         return (
@@ -194,7 +248,8 @@ export default function EventDetailsScreen({ route, navigation }) {
         );
     };
 
-    // Visningstidspunkter
+    // "displayedStartTime", "displayedEndTime" bruges i UI-teksten
+    // (formatTime) under "Rediger" eller "Vis".
     const displayedStartTime = new Date(
         date.getFullYear(),
         date.getMonth(),
@@ -212,8 +267,14 @@ export default function EventDetailsScreen({ route, navigation }) {
 
     return (
         <View style={styles.container}>
+
+            {/**
+       * Viser redigeringsfelter (hvis isEditing == true og User må redigere),
+       * eller tilstand "vis" med titel, beskrivelse, tidspunkter osv.
+       */}
             {isEditing && canEdit ? (
                 <>
+                    {/* Redigeringstilstand: Vis TextInputs og Pickers */}
                     <TextInput
                         label="Titel"
                         value={title}
@@ -227,7 +288,8 @@ export default function EventDetailsScreen({ route, navigation }) {
                         style={styles.textInput}
                         multiline
                     />
-                    {/* Ekstra: Vælg ny dato */}
+
+                    {/* Knap til ny dato via datepicker */}
                     <Button onPress={showDatePicker} style={styles.dateButton}>
                         Vælg dato: {date.toISOString().split('T')[0]}
                     </Button>
@@ -239,6 +301,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                         onCancel={hideDatePicker}
                     />
 
+                    {/* Picker til starttid */}
                     <Text style={{ marginBottom: 5 }}>
                         Starttid: {formatTime(displayedStartTime)}
                     </Text>
@@ -264,6 +327,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                         </Picker>
                     </View>
 
+                    {/* Picker til sluttid */}
                     <Text style={{ marginBottom: 5 }}>
                         Sluttid: {formatTime(displayedEndTime)}
                     </Text>
@@ -291,6 +355,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                 </>
             ) : (
                 <>
+                    {/* "læsetilstand": Titel, beskrivelse, tidsinfo, hvem der oprettede eventet */}
                     <Text style={styles.title}>{title}</Text>
                     <Text style={styles.description}>{description}</Text>
                     <Text style={styles.time}>Dato: {date.toISOString().split('T')[0]}</Text>
@@ -300,6 +365,7 @@ export default function EventDetailsScreen({ route, navigation }) {
                 </>
             )}
 
+            {/* Knapper redigering og sletning (hvis canEdit == true) */}
             <View style={styles.buttonContainer}>
                 {canEdit && (
                     isEditing ? (
@@ -319,13 +385,17 @@ export default function EventDetailsScreen({ route, navigation }) {
                 )}
             </View>
 
+            {/* Kommentar-sektionen */}
             <Text style={{ fontSize: 18, marginVertical: 10 }}>Kommentarer</Text>
             <FlatList
                 data={comments}
                 renderItem={renderComment}
                 keyExtractor={(item) => item.id}
+                // Hvis der ikke er nogen kommentarer endnu
                 ListEmptyComponent={<Text>Ingen kommentarer endnu.</Text>}
             />
+
+            {/* Inputfelt + knap til at tilføje ny kommentar */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
                 <TextInput
                     label="Ny kommentar"
@@ -341,22 +411,52 @@ export default function EventDetailsScreen({ route, navigation }) {
     );
 }
 
+// Styles
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
-    textInput: { marginBottom: 20 },
-    title: { fontSize: 24, marginBottom: 20 },
-    description: { fontSize: 16, marginBottom: 10 },
-    time: { fontSize: 16, marginBottom: 5 },
-    buttonContainer: { flexDirection: 'row', marginTop: 20 },
-    button: { marginRight: 10 },
+    container: {
+        flex: 1,
+        padding: 20
+    },
+    textInput: {
+        marginBottom: 20
+    },
+    title: {
+        fontSize: 24,
+        marginBottom: 20
+    },
+    description: {
+        fontSize: 16,
+        marginBottom: 10
+    },
+    time: {
+        fontSize: 16,
+        marginBottom: 5
+    },
+    buttonContainer: {
+        flexDirection: 'row',
+        marginTop: 20
+    },
+    button: {
+        marginRight: 10
+    },
     commentContainer: {
         backgroundColor: '#f0f0f0',
         padding: 10,
         borderRadius: 5,
         marginVertical: 5,
     },
-    commentUser: { fontWeight: 'bold' },
-    commentText: { marginVertical: 5 },
-    commentTime: { fontSize: 12, color: '#555' },
-    dateButton: { marginBottom: 10, alignSelf: 'flex-start' },
+    commentUser: {
+        fontWeight: 'bold'
+    },
+    commentText: {
+        marginVertical: 5
+    },
+    commentTime: {
+        fontSize: 12,
+        color: '#555'
+    },
+    dateButton: {
+        marginBottom: 10,
+        alignSelf: 'flex-start'
+    },
 });

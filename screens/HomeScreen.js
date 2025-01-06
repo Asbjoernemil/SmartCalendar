@@ -12,11 +12,11 @@ import { useIsFocused } from '@react-navigation/native';
 export default function HomeScreen({ navigation, route }) {
     // State til Agenda-items
     const [items, setItems] = useState({});
-    // Hvilken dag der er "valgt" (f.eks. "2025-01-08")
+
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const { groupId } = route.params || {};
 
-    // Tjekker, om skærmen er i fokus (kommer tilbage hertil)
+
     const isFocused = useIsFocused();
 
     // Kigger på om brugeren er logget ind
@@ -39,11 +39,11 @@ export default function HomeScreen({ navigation, route }) {
             return;
         }
 
-        // 1) Lav et tomt objekt, hvor vi gemmer events pr. dato
+        //tomt objekt, gemmer events pr. dato
         const newItems = {};
 
         // Agenda beder om events for en hel måned
-        // Her dækker vi -15 dage før -> +85 dage efter day.timestamp
+        // dækker -15 dage før -> +85 dage efter day.timestamp
         for (let i = -15; i < 85; i++) {
             const time = day.timestamp + i * 24 * 60 * 60 * 1000;
             const strTime = new Date(time).toISOString().split('T')[0];
@@ -51,16 +51,17 @@ export default function HomeScreen({ navigation, route }) {
         }
 
         try {
-            // 2) Hent ALLE events for groupId
+            // Hent ALLE events for groupId
             const ref = collection(db, 'events');
             const q = query(ref, where('groupIds', 'array-contains', groupId));
             const querySnapshot = await getDocs(q);
 
-            // 3) Gennemgå hvert event
+            // Gennemgå hvert event
             querySnapshot.forEach((docSnap) => {
                 const event = docSnap.data();
                 const eventId = docSnap.id;
-                // For hver dato i newItems => check doesEventOccurOnDate
+
+                //For hver dato i newItems => check doesEventOccurOnDate
                 Object.keys(newItems).forEach((dateKey) => {
                     if (doesEventOccurOnDate(event, dateKey)) {
                         newItems[dateKey].push({
@@ -75,13 +76,13 @@ export default function HomeScreen({ navigation, route }) {
                 });
             });
 
-            // 4) **Sorter** hver dags liste efter startTime (tidligst -> senest)
+            // **Sorter**
             Object.keys(newItems).forEach((dateKey) => {
                 newItems[dateKey].sort((a, b) => {
-                    // a.startTime og b.startTime er strenge => konverter til Date
+                    // a.startTime og b.startTime strings => konvert til Date
                     const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
                     const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
-                    return aTime - bTime; // tidligst først
+                    return aTime - bTime;
                 });
             });
 

@@ -4,15 +4,18 @@ import { db } from '../../services/firebase';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { List } from 'react-native-paper';
 
+/**
+ * GroupMembersScreen:
+ *  - Viser en liste over alle medlemmer i specifik gruppe (groupId).
+ *  - Finder brugere ved at søge i 'users' collection, hvor 'groups' array-contains groupId.
+ */
 export default function GroupMembersScreen({ route }) {
+    // groupId hentes fra navigation.params
     const { groupId } = route.params || {};
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // A) Valg 1: Hent “members” array fra groupDoc
-    // B) Valg 2: Søg i “users” collection, find dem der har groupId i groups
-    // Her viser jeg Valg 2.
-
+    // Henter medlemmer ved første load, hvis groupId er defineret.
     useEffect(() => {
         if (!groupId) {
             setLoading(false);
@@ -21,10 +24,15 @@ export default function GroupMembersScreen({ route }) {
         fetchMembers();
     }, [groupId]);
 
+    /**
+     * fetchMembers:
+     *  - Laver en query på 'users', hvor 'groups' array-contains groupId.
+     *  - Henter hver User, gemmer i 'members' state.
+     */
     const fetchMembers = async () => {
         setLoading(true);
 
-        // Søg i 'users', hvor 'groups' array-contains groupId
+        // Søg i 'users', hvor 'groups' indeholder groupId
         const usersRef = collection(db, 'users');
         const q = query(usersRef, where('groups', 'array-contains', groupId));
         const snap = await getDocs(q);
@@ -38,10 +46,12 @@ export default function GroupMembersScreen({ route }) {
                 color: uData.color || '#000',
             });
         });
+
         setMembers(loaded);
         setLoading(false);
     };
 
+    // Hvis data er ved at blive hentet -> spinner/ActivityIndicator
     if (loading) {
         return (
             <View style={styles.center}>
@@ -50,6 +60,7 @@ export default function GroupMembersScreen({ route }) {
         );
     }
 
+    // Hvis færdige med at loade, men listen er tom -> "Ingen medlemmer"
     if (!members.length) {
         return (
             <View style={styles.center}>
@@ -58,6 +69,7 @@ export default function GroupMembersScreen({ route }) {
         );
     }
 
+    // renderItem -> viser hvert medlem som en List.Item
     const renderItem = ({ item }) => {
         return (
             <List.Item
@@ -79,6 +91,7 @@ export default function GroupMembersScreen({ route }) {
     );
 }
 
+// Styles
 const styles = StyleSheet.create({
     center: {
         flex: 1,

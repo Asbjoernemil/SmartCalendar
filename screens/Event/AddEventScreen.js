@@ -7,35 +7,48 @@ import { formatDate, formatTime } from '../../utils/dateUtils';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
+// AddEventScreen: til oprettelse af aftale (event).
 export default function AddEventScreen({ navigation, route }) {
+
+    // Modtager en evt. selectedDate fra navigation (f.eks. fra DayEventsScreen).
+    // Hvis ikke en dato, bruges dd.
     const { selectedDate } = route.params || {};
     const initialDate = selectedDate ? new Date(selectedDate) : new Date();
 
+    // Defineres lokale states for formular(inputfelter)
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [date, setDate] = useState(initialDate);
 
+    // State til at styre --> dato-picker være synlig (modal).
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
-    // Start-/sluttid
+    // Start-/sluttid: Defineres som separate states (timetal og minut-tal).
+    // Samles i handleAddEvent, når eventet er oprettet.
     const [startHour, setStartHour] = useState(12);
     const [startMinute, setStartMinute] = useState(0);
     const [endHour, setEndHour] = useState(13);
     const [endMinute, setEndMinute] = useState(0);
 
-    // Grupper
+    // UserGroups: Liste over grupper, User er medlem af (navn + id).
+    // selectedGroups: Grupper der skal tilføjes til nye aftaler.
     const [userGroupsWithNames, setUserGroupsWithNames] = useState([]);
     const [selectedGroups, setSelectedGroups] = useState([]);
 
-    // Gentagelse
+    // recurrence: (NONE, DAILY mm.), og en evt. slutdato
+    // for gentagelsen. Vis/skjul slutdato-picker i en modal.
     const [recurrenceFrequency, setRecurrenceFrequency] = useState('NONE');
     const [recurrenceEndDate, setRecurrenceEndDate] = useState(null);
     const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
 
+    // Til <Picker> komponenten, viser timer (0-23) og minutter (5 min).
     const hours = [...Array(24).keys()];
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
-    // Hent brugerens grupper
+    /*
+     * useEffect: Henter Userens grupper fra Firestore efter første render.
+     * Hvis ingen bruger er logget ind, redirect til Login.
+     */
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
@@ -46,23 +59,31 @@ export default function AddEventScreen({ navigation, route }) {
 
         (async () => {
             try {
+                // Hent Userens doc fra 'users' collection.
                 const userDocRef = doc(db, 'users', user.uid);
                 const userSnap = await getDoc(userDocRef);
+
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
+                    // userData.groups array med group-ids, fx ['groupId1','groupId2']
                     const gIds = userData.groups || [];
 
+                    // newArray liste over { id, name } for hver gruppe
                     const newArray = [];
                     for (const gId of gIds) {
+                        // For hver gruppe-id, hent group docu.
                         const gRef = doc(db, 'groups', gId);
                         const gSnap = await getDoc(gRef);
+
                         if (gSnap.exists()) {
                             const gData = gSnap.data();
                             newArray.push({
                                 id: gId,
+                                // Hvis gruppen har et name-felt ellers brug groupId
                                 name: gData.name || gId,
                             });
                         } else {
+                            // Hvis doc ikke findes, fallback til groupId som navn
                             newArray.push({ id: gId, name: gId });
                         }
                     }
@@ -76,31 +97,45 @@ export default function AddEventScreen({ navigation, route }) {
         })();
     }, []);
 
-    // Opret event i Firestore
+    /**
+     * handleAddEvent: Når User trykker på "Tilføj aftale",
+     * 1) Tjekkes inputfelter (titel, gruppevalg),
+     * 2) Samles start- og sluttid ud fra states (12:00 - 13:00),
+     * 3) Laves nyt event-dokument i Firestore -> 'events' collection.
+     */
     const handleAddEvent = async () => {
+        // Tjek, om titel er udfyldt
         if (!title.trim()) {
             Alert.alert('Fejl', 'Du mangler at angive en titel.');
             return;
         }
+
+        // Tjek, om mindst én gruppe er valgt
         if (selectedGroups.length === 0) {
             Alert.alert('Ingen grupper valgt', 'Vælg mindst én gruppe, der skal have eventet.');
             return;
         }
 
+        // Konverter "date" til en string i formatet "YYYY-MM-DD"
         const dateString = date.toISOString().split('T')[0];
+
+        // startDateTime = JavaScript Date, sat til kl. startHour:startMinute
         const startDateTime = new Date(dateString);
         startDateTime.setHours(startHour, startMinute, 0, 0);
         const startTimeString = startDateTime.toISOString();
 
+        // endDateTime samme måde
         const endDateTime = new Date(dateString);
         endDateTime.setHours(endHour, endMinute, 0, 0);
         const endTimeString = endDateTime.toISOString();
 
+        // Tjek, sluttid er efter starttid
         if (endDateTime <= startDateTime) {
             Alert.alert('Ugyldig tid', 'Sluttiden skal være efter starttiden.');
             return;
         }
 
+        // User logget ind?
         const user = auth.currentUser;
         if (!user) {
             Alert.alert('Ikke logget ind', 'Du skal være logget ind.');
@@ -108,22 +143,24 @@ export default function AddEventScreen({ navigation, route }) {
         }
 
         try {
-            // Hent userColor
+            // Hent farve til User --> eventet kan vises i User-farve
             const userDocRef = doc(db, 'users', user.uid);
             const userSnap = await getDoc(userDocRef);
             const userData = userSnap.exists() ? userSnap.data() : {};
             const userColor = userData.color || '#000000';
 
-            // Byg recurrence-objekt
+            // Forbered recurrence-objekt (If freq != 'NONE', gem endDate).
             const recurrenceObj = {
                 frequency: recurrenceFrequency, // "NONE","DAILY","WEEKLY","MONTHLY","YEARLY"
                 endDate: recurrenceEndDate ? recurrenceEndDate.toISOString().split('T')[0] : null,
             };
 
+            // Opret nyt document i 'events'-collection
+            // Document indeholder title, date, user color, mm.
             await addDoc(collection(db, 'events'), {
                 title,
                 description,
-                date: dateString, // Startdato
+                date: dateString,
                 startTime: startTimeString,
                 endTime: endTimeString,
                 userId: user.uid,
@@ -132,12 +169,13 @@ export default function AddEventScreen({ navigation, route }) {
                 recurrence: {
                     frequency: recurrenceFrequency,
                     endDate: recurrenceEndDate
-                        ? recurrenceEndDate.toISOString().split('T')[0]   // Også "YYYY-MM-DD"
+                        ? recurrenceEndDate.toISOString().split('T')[0]
                         : null
                 },
             });
 
             Alert.alert('Event oprettet!', 'Din event blev oprettet i de valgte grupper.');
+            // navigationen
             navigation.goBack();
         } catch (error) {
             console.log('Fejl ved tilføjelse af aftale:', error);
@@ -145,9 +183,11 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
-    // DatoPicker for “dato”
+    // Vis dato-picker (modal)
     const showDatePicker = () => setDatePickerVisibility(true);
     const hideDatePicker = () => setDatePickerVisibility(false);
+
+    // Callback: User vælger en dato i date-picker
     const handleDateConfirm = (pickedDate) => {
         hideDatePicker();
         if (pickedDate) {
@@ -155,7 +195,7 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
-    // DatoPicker for “recurrenceEndDate”
+    // Viser og håndterer slutdato-picker for gentagelse (Reccurence)
     const handleRecurrenceEndConfirm = (pickedDate) => {
         setShowRecurrenceEndPicker(false);
         if (pickedDate) {
@@ -163,9 +203,12 @@ export default function AddEventScreen({ navigation, route }) {
         }
     };
 
+    // Lavers "displayedStartTime" og "displayedEndTime" for
+    // at vise/formatere tiden i UI (formatTime).
     const displayedStartTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute);
     const displayedEndTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute);
 
+    // Mulige (recurrenceFrequency)
     const recurrenceOptions = [
         { label: 'Ingen gentagelse', value: 'NONE' },
         { label: 'Daglig', value: 'DAILY' },
@@ -176,6 +219,7 @@ export default function AddEventScreen({ navigation, route }) {
 
     return (
         <ScrollView style={styles.container}>
+            {/* Overskrift */}
             <Text variant="headlineMedium" style={styles.header}>
                 Ny Aftale
             </Text>
@@ -195,7 +239,7 @@ export default function AddEventScreen({ navigation, route }) {
                 multiline
             />
 
-            {/* Vælg dato */}
+            {/* Dato-knap -> åbner DateTimePickerModal */}
             <Button onPress={showDatePicker} mode="outlined" style={styles.dateButton}>
                 Vælg dato: {formatDate(date.toISOString().split('T')[0])}
             </Button>
@@ -207,10 +251,13 @@ export default function AddEventScreen({ navigation, route }) {
                 onCancel={hideDatePicker}
             />
 
-            {/* Start/Slut tid */}
+            {/* Start- og sluttid (Picker til timer og minutter) */}
             <View style={styles.timeContainer}>
-                <Text style={styles.timeLabel}>Starttid: {formatTime(displayedStartTime)}</Text>
+                <Text style={styles.timeLabel}>
+                    Starttid: {formatTime(displayedStartTime)}
+                </Text>
                 <View style={styles.timeRow}>
+                    {/* Picker til startHour */}
                     <Picker
                         selectedValue={startHour}
                         style={styles.picker}
@@ -221,6 +268,7 @@ export default function AddEventScreen({ navigation, route }) {
                         ))}
                     </Picker>
                     <Text>:</Text>
+                    {/* Picker til startMinute */}
                     <Picker
                         selectedValue={startMinute}
                         style={styles.picker}
@@ -234,8 +282,11 @@ export default function AddEventScreen({ navigation, route }) {
             </View>
 
             <View style={styles.timeContainer}>
-                <Text style={styles.timeLabel}>Sluttid: {formatTime(displayedEndTime)}</Text>
+                <Text style={styles.timeLabel}>
+                    Sluttid: {formatTime(displayedEndTime)}
+                </Text>
                 <View style={styles.timeRow}>
+                    {/* Picker til endHour */}
                     <Picker
                         selectedValue={endHour}
                         style={styles.picker}
@@ -246,6 +297,7 @@ export default function AddEventScreen({ navigation, route }) {
                         ))}
                     </Picker>
                     <Text>:</Text>
+                    {/* Picker til endMinute */}
                     <Picker
                         selectedValue={endMinute}
                         style={styles.picker}
@@ -258,12 +310,13 @@ export default function AddEventScreen({ navigation, route }) {
                 </View>
             </View>
 
-            {/* Gentagelse */}
+            {/* Gentagelse(recurrence) */}
             <View style={styles.card}>
                 <Text variant="titleMedium" style={{ marginBottom: 10 }}>
                     Gentag aftale?
                 </Text>
 
+                {/* Vælg freq: NONE, DAILY, WEEKLY, MONTHLY, YEARLY */}
                 <Picker
                     selectedValue={recurrenceFrequency}
                     style={styles.picker}
@@ -292,7 +345,7 @@ export default function AddEventScreen({ navigation, route }) {
                 )}
             </View>
 
-            {/* Vælg grupper */}
+            {/* Grupper: Liste over, hvilke grupper man vil tilknytte eventet */}
             <Text variant="titleMedium" style={{ marginVertical: 10 }}>
                 Vælg grupper:
             </Text>
@@ -300,6 +353,7 @@ export default function AddEventScreen({ navigation, route }) {
                 <Text>Du er ikke medlem af nogen grupper endnu.</Text>
             )}
             {userGroupsWithNames.map((groupObj) => {
+                // Tjek om gruppen allerede er valgt
                 const checked = selectedGroups.includes(groupObj.id);
                 return (
                     <Checkbox.Item
@@ -308,8 +362,10 @@ export default function AddEventScreen({ navigation, route }) {
                         status={checked ? 'checked' : 'unchecked'}
                         onPress={() => {
                             if (checked) {
+                                // Fjern fra selectedGroups
                                 setSelectedGroups(selectedGroups.filter((gid) => gid !== groupObj.id));
                             } else {
+                                // Tilføj til selectedGroups
                                 setSelectedGroups([...selectedGroups, groupObj.id]);
                             }
                         }}
@@ -317,6 +373,7 @@ export default function AddEventScreen({ navigation, route }) {
                 );
             })}
 
+            {/* Knap til at oprette eventet i Firestore */}
             <Button mode="contained" onPress={handleAddEvent} style={styles.button}>
                 Tilføj aftale
             </Button>
@@ -324,6 +381,7 @@ export default function AddEventScreen({ navigation, route }) {
     );
 }
 
+// Styles
 const styles = StyleSheet.create({
     container: {
         flex: 1,

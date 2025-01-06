@@ -1,0 +1,25 @@
+/users (collection)
+   /<userId> (document)
+      - email
+      - displayName
+      - color
+      - groups: [<groupId>, ... ]
+
+/groups (collection)
+   /<groupId> (document)
+      - name
+      - createdBy
+      /chatMessages (subcollection)
+          /<messageId> (document)
+             - text, userId, userName, createdAt
+
+/events (collection)
+   /<eventId> (document)
+      - title, description, date
+      - startTime, endTime
+      - userId
+      - groupIds: [<groupId>, ...]
+      - recurrence: { frequency, endDate }
+      /comments (subcollection)
+         /<commentId> (document)
+            - text, userId, timestamp
