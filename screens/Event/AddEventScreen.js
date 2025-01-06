@@ -129,7 +129,12 @@ export default function AddEventScreen({ navigation, route }) {
                 userId: user.uid,
                 userColor: userColor,
                 groupIds: selectedGroups,
-                recurrence: recurrenceObj,
+                recurrence: {
+                    frequency: recurrenceFrequency,
+                    endDate: recurrenceEndDate
+                        ? recurrenceEndDate.toISOString().split('T')[0]   // Også "YYYY-MM-DD"
+                        : null
+                },
             });
 
             Alert.alert('Event oprettet!', 'Din event blev oprettet i de valgte grupper.');

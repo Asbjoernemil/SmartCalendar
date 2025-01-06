@@ -4,6 +4,7 @@ import { Calendar } from 'react-native-big-calendar';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useIsFocused } from '@react-navigation/native';
+import { doesEventOccurOnDate } from '../../utils/recurrenceUtils';
 
 export default function DayViewScreen({ route }) {
     const { selectedDate, groupId } = route.params;
@@ -20,28 +21,42 @@ export default function DayViewScreen({ route }) {
                 return;
             }
 
-            // Bemærk: "groupIds" i stedet for "groupId"
-            const q = query(
-                collection(db, 'events'),
-                where('date', '==', selectedDate),
-                where('groupIds', 'array-contains', groupId)
-            );
+            try {
+                // 1) Hent ALLE events for groupId (uden at begrænse på date)
+                const q = query(
+                    collection(db, 'events'),
+                    where('groupIds', 'array-contains', groupId)
+                );
+                const querySnapshot = await getDocs(q);
 
-            const querySnapshot = await getDocs(q);
-            const eventsData = [];
-            querySnapshot.forEach((docSnap) => {
-                const eventData = docSnap.data();
-                if (eventData.startTime && eventData.endTime) {
-                    eventsData.push({
-                        title: eventData.title || 'Uden titel',
-                        start: new Date(eventData.startTime),
-                        end: new Date(eventData.endTime),
-                        color: eventData.userColor || '#000',
-                    });
-                }
-            });
+                const dayEvents = [];
 
-            setEvents(eventsData);
+                // 2) For hvert event => brug doesEventOccurOnDate for at se om det forekommer på selectedDate
+                querySnapshot.forEach((docSnap) => {
+                    const eventData = docSnap.data();
+
+                    // doesEventOccurOnDate(eventData, selectedDate) returnerer true/false
+                    if (doesEventOccurOnDate(eventData, selectedDate)) {
+                        // Tjek at startTime og endTime findes, og parse dem til Date
+                        if (eventData.startTime && eventData.endTime) {
+                            const start = new Date(eventData.startTime);
+                            const end = new Date(eventData.endTime);
+                            dayEvents.push({
+                                // Felter som Calendar fra 'react-native-big-calendar' forventer
+                                title: eventData.title || 'Uden titel',
+                                start: start,
+                                end: end,
+                                color: eventData.userColor || '#000',
+                            });
+                        }
+                    }
+                });
+
+                setEvents(dayEvents);
+            } catch (error) {
+                console.log('Fejl ved hentning af events:', error);
+            }
+
             setLoading(false);
         };
 
@@ -66,7 +81,8 @@ export default function DayViewScreen({ route }) {
                 events={events}
                 height={600}
                 mode="day"
-                date={new Date(selectedDate)} // viser den valgte dag
+                // Fortæller kalenderen hvilken dag, der skal vises
+                date={new Date(selectedDate)}
                 eventCellStyle={eventCellStyle}
                 overlapOffset={100}
             />

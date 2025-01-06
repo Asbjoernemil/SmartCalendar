@@ -24,7 +24,7 @@ export default function DayEventsScreen({ route, navigation }) {
             const q = query(ref, where('groupIds', 'array-contains', groupId));
             const snapshot = await getDocs(q);
 
-            // 2) For hvert event => tjek doesEventOccurOnDate
+            // 2) Byg en liste over events der forekommer på selectedDate
             const newArr = [];
             snapshot.forEach((docSnap) => {
                 const evt = docSnap.data();
@@ -37,9 +37,17 @@ export default function DayEventsScreen({ route, navigation }) {
                 }
             });
 
+            // 3) **Sorter** newArr efter startTime (tidligst først)
+            newArr.sort((a, b) => {
+                const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
+                const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
+                return aTime - bTime;
+            });
+
             setEvents(newArr);
         };
 
+        // Henter events når skærmen er i fokus
         if (isFocused && groupId) {
             fetchEvents();
         }
@@ -58,7 +66,9 @@ export default function DayEventsScreen({ route, navigation }) {
                 <View style={[styles.eventContainer, { borderLeftColor: item.userColor }]}>
                     <Text>{item.title || item.name}</Text>
                     {startString && endString && (
-                        <Text>{startString} - {endString}</Text>
+                        <Text>
+                            {startString} - {endString}
+                        </Text>
                     )}
                 </View>
             </TouchableOpacity>
@@ -70,6 +80,7 @@ export default function DayEventsScreen({ route, navigation }) {
             <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10 }}>
                 Aftaler for {formatDate(selectedDate)}
             </Text>
+
             <FlatList
                 data={events}
                 renderItem={renderItem}
@@ -77,9 +88,8 @@ export default function DayEventsScreen({ route, navigation }) {
                 ListEmptyComponent={<Text>Ingen aftaler denne dag.</Text>}
             />
 
-            {/* Bunden: en container til DayView-knap + FAB */}
+            {/* Bunden: DayView-knap + FAB */}
             <View style={styles.bottomContainer}>
-                {/* Venstre: DayView-knap */}
                 <TouchableOpacity
                     style={styles.dayViewButton}
                     onPress={() => navigation.navigate('DayView', { selectedDate, groupId })}
@@ -87,7 +97,6 @@ export default function DayEventsScreen({ route, navigation }) {
                     <Text style={{ color: 'white' }}>Vis Day View</Text>
                 </TouchableOpacity>
 
-                {/* Højre: FAB plus-knap */}
                 <FAB
                     style={styles.fab}
                     icon="plus"
