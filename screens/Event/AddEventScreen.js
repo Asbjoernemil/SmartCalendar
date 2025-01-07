@@ -10,7 +10,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 // AddEventScreen: til oprettelse af aftale (event).
 export default function AddEventScreen({ navigation, route }) {
 
-    // Modtager en evt. selectedDate fra navigation (f.eks. fra DayEventsScreen).
+    // Modtager selectedDate fra navigation (fra DayEventsScreen).
     // Hvis ikke en dato, bruges dd.
     const { selectedDate } = route.params || {};
     const initialDate = selectedDate ? new Date(selectedDate) : new Date();
