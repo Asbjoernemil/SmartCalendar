@@ -27,7 +27,7 @@ export default function SignupScreen({ navigation }) {
             const user = userCredential.user;
             await setDoc(doc(db, 'users', user.uid), {
                 email: user.email,
-                displayName: displayName || user.email, // displayName eller email
+                displayName: displayName || user.email,
                 color: colors[Math.floor(Math.random() * colors.length)],
                 groups: []
             });

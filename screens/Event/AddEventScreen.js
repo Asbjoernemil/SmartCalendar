@@ -65,13 +65,13 @@ export default function AddEventScreen({ navigation, route }) {
 
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
-                    // userData.groups array med group-ids, fx ['groupId1','groupId2']
+                    // userData.groups array med group-ids,['groupId1','groupId2']
                     const gIds = userData.groups || [];
 
                     // newArray liste over { id, name } for hver gruppe
                     const newArray = [];
                     for (const gId of gIds) {
-                        // For hver gruppe-id, hent group docu.
+                        // For hver gruppe-id, hent group doc.
                         const gRef = doc(db, 'groups', gId);
                         const gSnap = await getDoc(gRef);
 

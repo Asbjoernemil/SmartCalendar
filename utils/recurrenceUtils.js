@@ -11,7 +11,7 @@ export function doesEventOccurOnDate(event, dateString) {
     const recEnd = event.recurrence?.endDate || null;
 
     // "checkDate" og "eventStartDate" som JS Date
-    // checkDate er den dato vil tjekke
+    // checkDate er den dato vil tjekke om eventet forekommer på
     const checkDate = new Date(dateString);
     // eventStartDate er "basis-dato" for eventet
     const eventStartDate = new Date(event.date);
